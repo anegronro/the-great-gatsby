@@ -11,10 +11,10 @@ Sources of truth (`Cerebro/05_risk_analysis/`):
 - `SCORING.md`: the six weighted dimensions and their per-dimension
   gate/cap column.
 - `OUTPUT_SCHEMA.md`: `RiskOutput`'s extension fields.
-- `Perfil Inversionista/Victor Gonzalez.md`: this is the only specialist
+- `Perfil Inversionista/Angel Negron.md`: this is the only specialist
   that reads the investor profile (per CLAUDE.md) -- `PROFILE` below is a
   literal, dated transcription of that file's position-sizing/horizon
-  facts (30-60% max position, 3-5 year horizon, $25,000 capital,
+  facts (3-5% risk per trade, <1 year horizon, $1,000 capital,
   aggressive/speculative style), not re-parsed from markdown at runtime.
 
 ## Direction rule
@@ -156,16 +156,21 @@ assert sum(DIMENSION_MAX_POINTS.values()) == MAX_POINTS
 
 SOLVENCY_WARNING = "SOLVENCY_WARNING: Operating earnings do not provide a comfortable interest buffer."
 
-# `Perfil Inversionista/Victor Gonzalez.md`, transcribed 2026-07 (dated;
+# `Perfil Inversionista/Angel Negron.md`, transcribed 2026-07 (dated;
 # re-check the source file if the profile changes). Only risk.py reads
 # this file, per CLAUDE.md's orchestration notes.
+#
+# Angel's sizing rule differs in KIND from a concentration cap: his profile
+# answers "max % per position" with a RISK-per-trade budget of 3-5% of capital
+# ($30-50 on $1,000), and states that rule governs over the >10% loss tolerance.
+# So the sizing band here is `risk_per_trade_pct`, not a 30-60% position cap.
 PROFILE: dict[str, Any] = {
-    "objective": "capital_growth",
-    "horizon_years": (3, 5),
-    "max_loss_tolerance": "gt_10pct",
+    "objective": "capital_growth_and_income",
+    "horizon_years": (0, 1),          # <1 año; retiro parcial en 6-12 meses
+    "max_loss_tolerance": "governed_by_risk_rule",
     "style": "aggressive_speculative",
-    "capital_usd": 25_000.0,
-    "max_position_pct": (0.30, 0.60),
+    "capital_usd": 1_000.0,
+    "risk_per_trade_pct": (0.03, 0.05),
     "geography": "us_only",
     "excludes": ("forex",),
 }
@@ -573,15 +578,21 @@ def thesis_killer_priority(probability: float, impact: float, detectability: flo
     return _ok(probability * impact * (1 - detectability) * time_urgency, unit="score", evidence_class=EvidenceClass.A)
 
 
-def profile_fit(position_size_pct: float | None) -> dict[str, Any]:
-    """Position-sizing and horizon fit against `PROFILE` (task-18 brief's
-    "profile-fit section reads the Perfil file")."""
-    lo, hi = PROFILE["max_position_pct"]
-    within_cap = (lo <= position_size_pct <= hi) if position_size_pct is not None else None
+def profile_fit(risk_per_trade_pct: float | None) -> dict[str, Any]:
+    """Per-trade-risk and horizon fit against `PROFILE`.
+
+    Angel's rule sizes each trade to risk 3-5% of capital, so the fit checks the
+    intended per-trade risk against that budget (not a position-size cap — see the
+    PROFILE note). `within_position_cap` is kept as an alias so callers/serializers
+    that read the old key still work.
+    """
+    lo, hi = PROFILE["risk_per_trade_pct"]
+    within = (lo <= risk_per_trade_pct <= hi) if risk_per_trade_pct is not None else None
     return {
-        "position_size_pct": position_size_pct,
-        "max_position_pct_range": list(PROFILE["max_position_pct"]),
-        "within_position_cap": within_cap,
+        "risk_per_trade_pct": risk_per_trade_pct,
+        "risk_per_trade_pct_range": list(PROFILE["risk_per_trade_pct"]),
+        "within_risk_budget": within,
+        "within_position_cap": within,   # alias retrocompatible
         "horizon_years_range": list(PROFILE["horizon_years"]),
         "style": PROFILE["style"],
         "capital_usd": PROFILE["capital_usd"],
@@ -1072,7 +1083,9 @@ def run(packet: Packet, overlay: dict[str, Any] | None = None) -> RiskOutput:
         failed += 0 if ok else 1
     validation_tests = ValidationTestsSummary(passed=passed, failed=failed, warnings=0)
 
-    position_size_pct = overlay.get("position_size_pct")
+    # Angel dimensiona por riesgo-por-operación; se lee esa clave del overlay y se
+    # cae a la vieja por compatibilidad.
+    position_size_pct = overlay.get("risk_per_trade_pct", overlay.get("position_size_pct"))
 
     return RiskOutput(
         agent_id=AGENT_ID,

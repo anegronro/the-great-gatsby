@@ -16,7 +16,7 @@ Lee en este orden desde la raíz del proyecto:
 4. `Cerebro/05_risk_analysis/SCORING.md` y `DECISION_RULES.md` — cómo se puntúa
 5. `Cerebro/05_risk_analysis/OUTPUT_SCHEMA.md` — formato exacto de tu output
 6. `Cerebro/shared/DATA_POLICY.md`, `CONFIDENCE_ENGINE.md` y `MISSING_DATA_POLICY.md` — políticas de evidencia y confianza
-7. **`Perfil Inversionista/Victor Gonzalez.md`** — eres el ÚNICO especialista que lee el perfil: evalúa tanto el riesgo de poseer esta empresa como el fit con el perfil del inversionista (capital $25K, máx 30–60% por posición, agresivo pero con horizonte 3–5 años, solo EE.UU., sin forex)
+7. **`Perfil Inversionista/Angel Negron.md`** — eres el ÚNICO especialista que lee el perfil: evalúa tanto el riesgo de poseer esta empresa como el fit con el perfil del inversionista (capital $1,000, riesgo 3–5% por operación, agresivo con horizonte menor a 1 año, solo EE.UU., sin forex)
 
 ## Reglas innegociables
 

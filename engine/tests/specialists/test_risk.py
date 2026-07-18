@@ -280,12 +280,14 @@ def test_thesis_killer_priority():
 
 
 def test_profile_fit_within_cap():
-    fit = risk.profile_fit(0.40)
-    assert fit["within_position_cap"] is True
-    fit_over = risk.profile_fit(0.80)
-    assert fit_over["within_position_cap"] is False
+    # Angel: riesgo 3-5% por operación. 4% cae dentro; 8% se pasa.
+    fit = risk.profile_fit(0.04)
+    assert fit["within_risk_budget"] is True
+    assert fit["within_position_cap"] is True   # alias retrocompatible
+    fit_over = risk.profile_fit(0.08)
+    assert fit_over["within_risk_budget"] is False
     fit_none = risk.profile_fit(None)
-    assert fit_none["within_position_cap"] is None
+    assert fit_none["within_risk_budget"] is None
 
 
 # ============================================================================
@@ -423,9 +425,9 @@ def test_run_beta_not_scorable_empty_benchmark():
 
 
 def test_run_nvda_fixture_profile_fit_populated(nvda_packet):
-    out = risk.run(nvda_packet, overlay={"position_size_pct": 0.45})
-    assert out.profile_fit["within_position_cap"] is True
-    assert out.profile_fit["capital_usd"] == pytest.approx(25_000.0)
+    out = risk.run(nvda_packet, overlay={"risk_per_trade_pct": 0.04})
+    assert out.profile_fit["within_risk_budget"] is True
+    assert out.profile_fit["capital_usd"] == pytest.approx(1_000.0)
 
 
 def test_run_nvda_fixture_validation_tests_all_self_checks_pass(nvda_packet):

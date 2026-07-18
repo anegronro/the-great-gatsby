@@ -78,10 +78,10 @@ El orquestador armará el packet de datos, correrá los 6 especialistas en paral
 
 ## Perfil del inversionista (resumen)
 
-- **Objetivo:** crecimiento de capital, horizonte 3–5 años
+- **Objetivo:** crecimiento de capital, horizonte menor a 1 año
 - **Estilo:** agresivo y especulativo — acciones, ETF y opciones
 - **Universo:** solo Estados Unidos, sin forex
-- **Capital:** $25,000 USD — máx. 30–60% por posición
+- **Capital:** $1,000 USD — riesgo 3–5% por operación
 - **Prioridad:** probabilidad de éxito, timing de entradas y salidas
 
 ## Límites
