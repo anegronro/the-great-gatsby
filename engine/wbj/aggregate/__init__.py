@@ -47,6 +47,7 @@ from wbj.aggregate.synthesis import (
     confluence_tolerance,
     synthesize_levels,
 )
+from wbj.aggregate.pipeline import Classification, classify
 
 __all__ = [
     # overrides.py
@@ -81,4 +82,7 @@ __all__ = [
     "LevelSynthesis",
     "confluence_tolerance",
     "synthesize_levels",
+    # pipeline.py
+    "Classification",
+    "classify",
 ]
