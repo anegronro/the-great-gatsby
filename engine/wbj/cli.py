@@ -76,6 +76,33 @@ def _latest(series: list[dict]) -> float | None:
     return series[-1]["val"] if series else None
 
 
+def _fmp_series(rows: list | dict | None, key: str, *, absolute: bool = False) -> list[dict]:
+    """Annual `[{"end", "val"}]` from an FMP statement, oldest first.
+
+    FMP returns one row per fiscal year (newest first) with every line item
+    keyed by `date`; this maps one line item to the packet's series shape and
+    re-sorts ascending so `series[-1]` is the latest year, matching the EDGAR
+    path's convention. Rows with a missing/non-numeric value are dropped.
+    `absolute` stores |val| (FMP reports capex as a negative outflow).
+    """
+    if not isinstance(rows, list):
+        return []
+    out: list[dict] = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        val, end = r.get(key), r.get("date")
+        if val is None or end is None:
+            continue
+        try:
+            num = float(val)
+        except (TypeError, ValueError):
+            continue
+        out.append({"end": end, "val": abs(num) if absolute else num})
+    out.sort(key=lambda x: x["end"])
+    return out
+
+
 def _build_packet(ticker: str) -> dict:
     settings, edgar, fmp = _providers()
     cik = edgar.cik_for(ticker)
@@ -120,6 +147,38 @@ def _build_packet(ticker: str) -> dict:
             "earnings": fmp.earnings_calendar(ticker),
             "insiders": fmp.insider_trades(ticker),
         }
+        # Fundamentals from FMP's aligned statements — the SAME live source
+        # the scorecard uses. This replaces the per-us-gaap-tag EDGAR
+        # extraction, which silently desynced across concepts (NVDA's revenue
+        # tag stopped at FY2022 while NetIncomeLoss ran to FY2026, so
+        # net_income[-1]/revenue[-1] read a 446% "margin"). FMP returns every
+        # line item on one row per fiscal year, so revenue/net_income/OCF/capex
+        # all share the same year. Only keys FMP actually populates override
+        # EDGAR, so a partial FMP outage degrades to EDGAR instead of blanking.
+        inc = fmp.income_annual(ticker)
+        cfs = fmp.cashflow_annual(ticker)
+        bal = fmp.balance_annual(ticker)
+        fmp_annual = {
+            "revenue": _fmp_series(inc, "revenue"),
+            "net_income": _fmp_series(inc, "netIncome"),
+            "operating_income": _fmp_series(inc, "operatingIncome"),
+            "gross_profit": _fmp_series(inc, "grossProfit"),
+            "interest_expense": _fmp_series(inc, "interestExpense"),
+            "diluted_shares": _fmp_series(inc, "weightedAverageShsOutDil"),
+            "operating_cash_flow": (
+                _fmp_series(cfs, "netCashProvidedByOperatingActivities")
+                or _fmp_series(cfs, "operatingCashFlow")
+            ),
+            # capex is a negative outflow in FMP; store positive to match the
+            # EDGAR convention (narrative/_compute do `ocf - capex`).
+            "capex": _fmp_series(cfs, "capitalExpenditure", absolute=True),
+            "long_term_debt": _fmp_series(bal, "longTermDebt"),
+            "equity": _fmp_series(bal, "totalStockholdersEquity"),
+        }
+        for key, series in fmp_annual.items():
+            if series:
+                packet["annual"][key] = series
+        packet["sources"]["fmp_fundamentals"] = any(fmp_annual.values())
     return packet
 
 
