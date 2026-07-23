@@ -25,13 +25,42 @@ from wbj.providers.edgar import (
 )
 from wbj.screener import screen as run_screen
 from wbj.brief import company_brief
+from wbj.order import build_ticket
+from wbj.providers.robinhood import OrderRefused, RobinhoodProvider
 from wbj.targets import live_price, narrative, price_history, price_targets
 
 PORT = 8765
 _lock = threading.Lock()
 
+# Capital del perfil (Perfil Inversionista/Angel Negron.md) — se usa para el
+# PREVIEW del ticket cuando Robinhood aún no está configurado. En la ejecución
+# real el tamaño se recalcula contra el poder de compra vivo de la cuenta.
+PROFILE_CAPITAL = 1000.0
+
 settings = load_settings()
 edgar = EdgarProvider(settings, Cache(settings.cache_dir))
+rh_provider = RobinhoodProvider(settings)
+
+
+def _order_preview(ticker: str, brief: dict) -> dict | None:
+    """Build a BUY ticket from the research levels (entrada=entry, invalidación=
+    stop), sized on the profile capital. Long-only, favorable-only. Returns None
+    when the research doesn't favor a clean long. Preview only — never places."""
+    interp = (brief or {}).get("interpretation") or {}
+    # Only pre-fill an order when the research classification favors entering.
+    if interp.get("classification") != "favorece":
+        return None
+    lv = ((brief or {}).get("watch") or {}).get("levels") or {}
+    if lv.get("status") != "ok":
+        return None
+    ticket = build_ticket(
+        ticker, "buy",
+        entry=lv.get("entrada"), stop=lv.get("invalidacion"),
+        equity=PROFILE_CAPITAL, max_notional=PROFILE_CAPITAL,
+    )
+    out = ticket.as_dict()
+    out["equity_basis"] = "perfil $1,000 (preview)"
+    return out
 
 
 def ticker_map() -> list[dict]:
@@ -93,7 +122,49 @@ def analyze(ticker: str) -> dict:
     result["brief"] = company_brief(packet, result["scorecard"], targets)
     result["history"] = _history(packet)
     result["chart"] = price_history(ticker)
+    result["order"] = _order_preview(ticker, result["brief"])
+    result["rh_configured"] = rh_provider.available
     return result
+
+
+def place_order(payload: dict) -> dict:
+    """Place a confirmed BUY-with-stop on Robinhood — REAL MONEY.
+
+    Re-sizes against live buying power (never trusts a client-sent qty) and
+    re-validates via `build_ticket` before touching the broker. The human's
+    confirm flag must be exactly True; anything else refuses. Returns a JSON-safe
+    status dict, never raises out to the handler.
+    """
+    ticker = str(payload.get("ticker", "")).upper().strip()
+    entry = payload.get("entry")
+    stop = payload.get("stop")
+    confirm = payload.get("confirm") is True
+
+    if not rh_provider.available:
+        return {"ok": False, "status": "not_configured",
+                "note": "Robinhood no está configurado (faltan RH_USERNAME/"
+                        "RH_PASSWORD en API/.env). No se envió nada."}
+
+    equity = rh_provider.buying_power() or PROFILE_CAPITAL
+    ticket = build_ticket(ticker, "buy", entry=entry, stop=stop,
+                          equity=equity, risk_frac=0.03, max_notional=equity)
+    if not ticket.tradeable:
+        return {"ok": False, "status": "not_tradeable", "note": ticket.reason}
+
+    try:
+        res = rh_provider.place_long_with_stop(
+            ticker, ticket.qty, float(entry), float(stop), confirm=confirm)
+    except OrderRefused as e:
+        return {"ok": False, "status": "refused", "note": str(e)}
+    except Exception as e:  # broker/transport — report, keep server alive
+        return {"ok": False, "status": "error", "note": str(e)}
+
+    res["ok"] = res.get("status") == "placed"
+    res["qty"] = ticket.qty
+    res["entry"] = ticket.entry
+    res["stop"] = ticket.stop
+    res["risk_dollars"] = ticket.risk_dollars
+    return res
 
 
 PAGE = """<!doctype html>
@@ -192,6 +263,27 @@ PAGE = """<!doctype html>
   .ins-buy { color:var(--green); font-weight:800; } .ins-sell { color:var(--red); font-weight:800; }
   .risk li::before { content:"⚠ "; color:var(--orange); }
   .brief-note { font-size:12px; color:var(--muted); margin-top:6px; }
+  /* --- Order entry (Robinhood, dinero real) --- */
+  .rh-banner { background:var(--red-bg); border:1px solid #f4c7c9; color:#a3282c;
+    border-radius:12px; padding:12px 14px; font-size:13px; font-weight:700;
+    display:flex; gap:8px; align-items:flex-start; margin:4px 0 16px; }
+  .ticket { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:8px 0 16px; }
+  @media (max-width:720px){ .ticket { grid-template-columns:repeat(2,1fr); } }
+  .tk { background:var(--grid); border-radius:12px; padding:12px 14px; }
+  .tk .k { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink2); font-weight:700; }
+  .tk .v { font-size:22px; font-weight:800; letter-spacing:-.01em; margin-top:2px; }
+  .tk.buy .v { color:var(--green); } .tk.stop .v { color:var(--red); }
+  .rh-confirm { display:flex; gap:10px; align-items:flex-start; font-size:13.5px;
+    color:var(--ink); margin:2px 0 14px; cursor:pointer; }
+  .rh-confirm input { width:20px; height:20px; margin-top:1px; accent-color:var(--red); }
+  .rh-send { font:inherit; font-size:15px; font-weight:800; padding:13px 24px; border:0;
+    border-radius:13px; background:#c1c6cf; color:#fff; cursor:not-allowed; width:100%; }
+  .rh-send.armed { background:var(--red); cursor:pointer; }
+  .rh-result { margin-top:14px; font-size:14px; padding:12px 14px; border-radius:12px; }
+  .rh-result.ok { background:var(--green-bg); color:#1a7a52; }
+  .rh-result.warn { background:var(--orange-bg); color:#9a6a12; }
+  .rh-result.err { background:var(--red-bg); color:#a3282c; }
+  .rh-note { font-size:12px; color:var(--muted); margin-top:8px; }
   .c-chart h2 { color:#fff; } .c-chart .sub { color:#8b929c; }
   .chart-head { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin:8px 0 4px; }
   .chart-head .px { font-size:34px; font-weight:800; letter-spacing:-.02em; }
@@ -329,6 +421,7 @@ PAGE = """<!doctype html>
     <div class="card c-score" id="scoreCard"></div>
     <div class="card c-target" id="targetCard"></div>
     <div class="card c-brief" id="briefCard"></div>
+    <div class="card c-order" id="orderCard" style="display:none"></div>
   </div>
   <div class="foot" id="foot"><b>Nota:</b> Puntaje rápido con datos oficiales de la SEC (EDGAR).
   Sin evidencia no hay número: las categorías pendientes se muestran como N/S, nunca se inventan.
@@ -622,6 +715,71 @@ function briefHtml(d) {
     <div class="brief-grid" style="margin-top:16px">${interpCol}${probCol}${watchCol}</div>`;
 }
 
+// --- Entrar orden a Robinhood (dinero real, tu clic manda) ---------------
+let ORDER = null;  // el ticket vigente, para el submit
+
+function orderHtml(d) {
+  const o = d.order;
+  if (!o) return { show:false, html:'' };
+  ORDER = { ticker:d.ticker, entry:o.entry, stop:o.stop };
+  if (!o.tradeable) {
+    return { show:true, html:`<h2>Entrar orden</h2>
+      <div class="sub">Orden derivada del research — no ejecutable</div>
+      <div class="brief-note" style="margin-top:12px">No hay orden sugerida: ${o.reason || 'niveles insuficientes'}.</div>` };
+  }
+  const cfg = d.rh_configured;
+  const capBasis = o.equity_basis || '';
+  const send = cfg
+    ? `<button class="rh-send" id="rhSend" disabled onclick="submitOrder()">Enviar a Robinhood</button>`
+    : `<button class="rh-send" disabled>Conecta Robinhood en API/.env para habilitar</button>`;
+  const confirm = cfg
+    ? `<label class="rh-confirm"><input type="checkbox" id="rhChk" onchange="document.getElementById('rhSend').classList.toggle('armed', this.checked); document.getElementById('rhSend').disabled=!this.checked;">
+        Entiendo que esto envía una <b>orden real</b> de compra con dinero real a mi cuenta de Robinhood, con su stop de protección adjunto.</label>`
+    : '';
+  return { show:true, html:`<h2>Entrar orden</h2>
+    <div class="sub">Compra dimensionada al 3–5% de riesgo · stop adjunto · tu clic la envía</div>
+    <div class="rh-banner">⚠ DINERO REAL — esta orden se manda a Robinhood cuando TÚ la confirmas. El agente no la dispara solo.</div>
+    <div class="ticket">
+      <div class="tk"><div class="k">Ticker</div><div class="v">${o.ticker}</div></div>
+      <div class="tk buy"><div class="k">Comprar</div><div class="v">${o.qty} <span style="font-size:13px;color:var(--ink2)">acc.</span></div></div>
+      <div class="tk"><div class="k">Entrada (límite)</div><div class="v">${money(o.entry,2)}</div></div>
+      <div class="tk stop"><div class="k">Stop</div><div class="v">${money(o.stop,2)}</div></div>
+    </div>
+    <div class="brief-note">Riesgo si toca el stop: <b>${money(o.risk_dollars,2)}</b> (${(o.risk_frac*100).toFixed(0)}% del capital) · Notional ${money(o.notional,2)} · Base: ${capBasis}. El tamaño real se recalcula contra tu poder de compra vivo al enviar.</div>
+    ${confirm}
+    ${send}
+    <div class="rh-result" id="rhResult" style="display:none"></div>` };
+}
+
+async function submitOrder() {
+  if (!ORDER) return;
+  const btn = document.getElementById('rhSend');
+  const out = document.getElementById('rhResult');
+  btn.disabled = true; btn.textContent = 'Enviando…';
+  try {
+    const r = await fetch('/api/order/place', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ ticker:ORDER.ticker, entry:ORDER.entry, stop:ORDER.stop, confirm:true }) });
+    const j = await r.json();
+    out.style.display = 'block';
+    if (j.ok) {
+      out.className = 'rh-result ok';
+      out.innerHTML = `✅ Orden colocada: comprar ${j.qty} ${ORDER.ticker} a ${money(j.entry,2)} con stop ${money(j.stop,2)}. Riesgo ${money(j.risk_dollars,2)}.`;
+    } else if (j.status === 'unhedged') {
+      out.className = 'rh-result warn';
+      out.innerHTML = `⚠ ${j.note}`;
+    } else {
+      out.className = 'rh-result err';
+      out.innerHTML = `⛔ No se colocó (${j.status}): ${j.note || 'error'}`;
+      btn.disabled = false; btn.textContent = 'Enviar a Robinhood';
+    }
+  } catch (e) {
+    out.style.display = 'block'; out.className = 'rh-result err';
+    out.innerHTML = `⛔ Error de red: ${e.message}`;
+    btn.disabled = false; btn.textContent = 'Enviar a Robinhood';
+  }
+}
+
 // --- Gráfica SVG propia (cero dependencias externas) ---------------------
 let tvData = [], tvTargets = null;
 const PERIODS = { '1M': 21, '3M': 63, '6M': 126, '1A': 9999 };
@@ -774,6 +932,9 @@ async function run(t) {
     document.getElementById('scoreCard').innerHTML = scoreHtml(d);
     document.getElementById('targetCard').innerHTML = targetHtml(d);
     document.getElementById('briefCard').innerHTML = briefHtml(d);
+    const oc = document.getElementById('orderCard');
+    const ord = orderHtml(d);
+    oc.innerHTML = ord.html; oc.style.display = ord.show ? 'block' : 'none';
     finishLoading(true, () => {
       grid.style.display = 'grid';
       renderChart(d);
@@ -831,6 +992,24 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": str(e)}, 500)
         else:
             self._json({"error": "not found"}, 404)
+
+    def do_POST(self) -> None:  # noqa: N802 (stdlib API)
+        url = urlparse(self.path)
+        if url.path != "/api/order/place":
+            self._json({"error": "not found"}, 404)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            payload = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, json.JSONDecodeError):
+            self._json({"ok": False, "status": "bad_request",
+                        "note": "cuerpo JSON inválido"}, 400)
+            return
+        try:
+            with _lock:
+                self._json(place_order(payload))
+        except Exception as e:  # never crash the server on an order path
+            self._json({"ok": False, "status": "error", "note": str(e)}, 500)
 
     def log_message(self, fmt: str, *args) -> None:
         print(f"[wbj] {self.address_string()} {fmt % args}")

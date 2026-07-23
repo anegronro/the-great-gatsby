@@ -25,11 +25,13 @@ class Settings:
     # Model for the qualitative judgment agent; override to cut cost (e.g.
     # "claude-haiku-4-5"). Default per the Anthropic SDK guidance.
     judge_model: str = "claude-opus-4-8"
-    # Alpaca paper trading. `alpaca_paper` no es decorativo: el proveedor se niega a
-    # operar si es False o si la llave no es de paper (prefijo PK). Ver providers/alpaca.py.
-    alpaca_key_id: str | None = None
-    alpaca_secret: str | None = None
-    alpaca_paper: bool = True
+    # Robinhood order entry (API no oficial, robin_stocks). Credenciales que TÚ
+    # pones en API/.env; el motor solo las lee. Sin ellas el proveedor queda
+    # deshabilitado. El MFA es el secreto TOTP de tu 2FA por app (base32), del
+    # que robin_stocks genera el código en cada login. Ver providers/robinhood.py.
+    rh_username: str | None = None
+    rh_password: str | None = None
+    rh_mfa_totp: str | None = None
     repo_root: Path = field(default_factory=_find_repo_root)
     cache_dir: Path = field(default_factory=lambda: _find_repo_root() / "engine" / "cache")
     reports_dir: Path = field(default_factory=lambda: _find_repo_root() / "Reportes")
@@ -76,10 +78,9 @@ def load_settings(env_file: Path | None = None) -> Settings:
         env_vars.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY") or None
     )
     judge_model = env_vars.get("JUDGE_MODEL") or "claude-opus-4-8"
-    alpaca_key_id = env_vars.get("ALPACA_API_KEY_ID") or None
-    alpaca_secret = env_vars.get("ALPACA_SECRET_KEY") or None
-    # Solo un "false" explícito apaga el modo paper; cualquier otra cosa lo deja puesto.
-    alpaca_paper = (env_vars.get("ALPACA_PAPER") or "true").strip().lower() != "false"
+    rh_username = env_vars.get("RH_USERNAME") or None
+    rh_password = env_vars.get("RH_PASSWORD") or None
+    rh_mfa_totp = env_vars.get("RH_MFA_TOTP") or None
 
     return Settings(
         fmp_api_key=fmp_api_key,
@@ -87,9 +88,9 @@ def load_settings(env_file: Path | None = None) -> Settings:
         fred_api_key=fred_api_key,
         anthropic_api_key=anthropic_api_key,
         judge_model=judge_model,
-        alpaca_key_id=alpaca_key_id,
-        alpaca_secret=alpaca_secret,
-        alpaca_paper=alpaca_paper,
+        rh_username=rh_username,
+        rh_password=rh_password,
+        rh_mfa_totp=rh_mfa_totp,
         repo_root=repo_root,
         cache_dir=repo_root / "engine" / "cache",
         reports_dir=repo_root / "Reportes",

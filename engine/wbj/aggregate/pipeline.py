@@ -2,8 +2,8 @@
 
 This is the one module that connects the 6 frozen Cerebro specialist
 outputs to the main-agent aggregation (`apply_overrides` then
-`apply_gates`), producing the single `ProfileResult` a report -- or the
-paper forward-test (`wbj.papertest`) -- consumes. Nothing else in the
+`apply_gates`), producing the single `ProfileResult` a report -- and the
+Robinhood order-entry ticket (`wbj.order`) -- consumes. Nothing else in the
 engine runs this end to end: `dashboard.py` builds a *health* view (per-area
 HEALTHY/WATCH/WEAK), which is deliberately not the gate profile.
 
