@@ -20,9 +20,22 @@ class _Settings:
         self.rh_mfa_totp = totp
 
 
-def _fake_rh(monkeypatch, *, entry_ok=True, stop_ok=True, calls=None):
-    """Install a fake robin_stocks.robinhood module and record order calls."""
+def _fake_rh(monkeypatch, tmp_path=None, *, entry_ok=True, stop_ok=True,
+            session=True, calls=None):
+    """Install a fake robin_stocks.robinhood module and record order calls.
+
+    `session` controls whether a stored-session file appears to exist (Plan B):
+    when True, SESSION_FILE is pointed at a real temp file so `_ensure_login`
+    proceeds; when False it points at a missing path so login refuses.
+    """
     calls = calls if calls is not None else {}
+
+    if tmp_path is not None or session is False:
+        sess = (tmp_path / "robinhood.pickle") if tmp_path else \
+            __import__("pathlib").Path("/nonexistent/robinhood.pickle")
+        if session and tmp_path is not None:
+            sess.write_bytes(b"x")
+        monkeypatch.setattr(rhmod, "SESSION_FILE", sess)
 
     def login(**kwargs):
         calls["login"] = kwargs
@@ -91,8 +104,8 @@ def test_unconfigured_provider_refuses_at_login(monkeypatch):
 # --- happy path & unhedged reporting ----------------------------------------
 
 
-def test_confirmed_order_places_both_legs(monkeypatch):
-    calls = _fake_rh(monkeypatch)
+def test_confirmed_order_places_both_legs(monkeypatch, tmp_path):
+    calls = _fake_rh(monkeypatch, tmp_path)
     p = RobinhoodProvider(_Settings())
     res = p.place_long_with_stop("nvda", 10, 100.0, 98.0, confirm=True)
     assert res["status"] == "placed"
@@ -100,16 +113,24 @@ def test_confirmed_order_places_both_legs(monkeypatch):
     assert calls["stop"] == ("NVDA", 10, 98.0, "gtc")
 
 
-def test_stop_rejection_reports_unhedged(monkeypatch):
-    _fake_rh(monkeypatch, stop_ok=False)
+def test_place_refuses_without_stored_session(monkeypatch):
+    # Plan B: no session file -> refuse with guidance, never prompt/hang.
+    _fake_rh(monkeypatch, session=False)
+    p = RobinhoodProvider(_Settings())
+    with pytest.raises(OrderRefused, match="rh_login"):
+        p.place_long_with_stop("NVDA", 10, 100.0, 98.0, confirm=True)
+
+
+def test_stop_rejection_reports_unhedged(monkeypatch, tmp_path):
+    _fake_rh(monkeypatch, tmp_path, stop_ok=False)
     p = RobinhoodProvider(_Settings())
     res = p.place_long_with_stop("NVDA", 10, 100.0, 98.0, confirm=True)
     assert res["status"] == "unhedged"
     assert "STOP" in res["note"]
 
 
-def test_entry_rejection_places_no_stop(monkeypatch):
-    calls = _fake_rh(monkeypatch, entry_ok=False)
+def test_entry_rejection_places_no_stop(monkeypatch, tmp_path):
+    calls = _fake_rh(monkeypatch, tmp_path, entry_ok=False)
     p = RobinhoodProvider(_Settings())
     res = p.place_long_with_stop("NVDA", 10, 100.0, 98.0, confirm=True)
     assert res["status"] == "rejected"
@@ -124,8 +145,8 @@ def test_available_false_without_credentials(monkeypatch):
     assert RobinhoodProvider(_Settings(user=None)).available is False
 
 
-def test_buying_power_parses_float(monkeypatch):
-    _fake_rh(monkeypatch)
+def test_buying_power_parses_float(monkeypatch, tmp_path):
+    _fake_rh(monkeypatch, tmp_path)
     assert RobinhoodProvider(_Settings()).buying_power() == 1234.56
 
 

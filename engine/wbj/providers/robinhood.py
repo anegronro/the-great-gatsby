@@ -22,9 +22,17 @@ is rejected here rather than mishandled.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# Where robin_stocks stores the session after a `store_session=True` login.
+# The web app never authenticates interactively — Angel runs scripts/rh_login.py
+# once to create this file, and the app reuses it. If it is missing we refuse
+# with guidance instead of triggering robin_stocks' interactive MFA prompt
+# (which would hang a server thread).
+SESSION_FILE = Path.home() / ".tokens" / "robinhood.pickle"
 
 try:  # unofficial deps; absence simply disables the provider
     import pyotp
@@ -78,6 +86,15 @@ class RobinhoodProvider:
                 "Robinhood no está configurado (faltan RH_USERNAME/RH_PASSWORD "
                 "en API/.env)."
             )
+        # Plan B: reuse the stored session. Never authenticate interactively from
+        # here — if there is no session, refuse and tell Angel to run the one-time
+        # login, rather than block on robin_stocks' MFA input() prompt.
+        if not self._has_totp and not SESSION_FILE.exists():
+            raise OrderRefused(
+                "No hay sesión de Robinhood. Corre una vez en la terminal: "
+                ".venv/bin/python scripts/rh_login.py  (inicia sesión, teclea el "
+                "código MFA cuando lo pida, y guarda la sesión)."
+            )
         rh.login(
             username=self.settings.rh_username,
             password=self.settings.rh_password,
@@ -85,6 +102,10 @@ class RobinhoodProvider:
             store_session=True,
         )
         self._logged_in = True
+
+    @property
+    def _has_totp(self) -> bool:
+        return bool(getattr(self.settings, "rh_mfa_totp", None))
 
     # -- reads ----------------------------------------------------------------
 
