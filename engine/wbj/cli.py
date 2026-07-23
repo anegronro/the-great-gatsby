@@ -146,6 +146,11 @@ def _build_packet(ticker: str) -> dict:
             "estimates": fmp.analyst_estimates(ticker),
             "earnings": fmp.earnings_calendar(ticker),
             "insiders": fmp.insider_trades(ticker),
+            # Recognized 13F investors holding the name (free via SEC EDGAR,
+            # independent of the FMP institutional-ownership tier).
+            "notable_holders": edgar.notable_holders(
+                packet["entity"], as_of=packet["as_of"]
+            ),
         }
         # Fundamentals from FMP's aligned statements — the SAME live source
         # the scorecard uses. This replaces the per-us-gaap-tag EDGAR

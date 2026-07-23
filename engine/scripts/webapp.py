@@ -597,6 +597,12 @@ function briefHtml(d) {
         <span class="${i.side === 'compra' ? 'ins-buy' : 'ins-sell'}">${i.side === 'compra' ? 'COMPRA' : 'VENTA'} ${money(i.value, 0)}</span></li>`).join('')}</ul>` :
     `<div class="brief-note">Sin transacciones de insiders sobre $1M.</div>`;
 
+  const nh = w.notable_holders || [];
+  const nhBlock = nh.length ? `<ul class="wl">${nh.map(h =>
+      `<li><span>${h.investor} · 13F ${h.as_of || ''}</span>
+        <span class="ins-buy">${money(h.value, 0)}${h.options ? ' +opc' : ''}</span></li>`).join('')}</ul>` :
+    `<div class="brief-note">Ningún inversionista reconocido del registro reporta posición (13F).</div>`;
+
   const risks = w.risks || [];
   const riskBlock = risks.length ? `<ul class="wl risk">${risks.map(r => `<li><span>${r}</span></li>`).join('')}</ul>` :
     `<div class="brief-note">Sin banderas de riesgo materiales en los datos.</div>`;
@@ -607,6 +613,7 @@ function briefHtml(d) {
       <div class="brief-col"><div class="bh" style="font-size:12px">Niveles de precio</div>${levelsBlock}</div>
       <div class="brief-col"><div class="bh" style="font-size:12px">Próximos catalizadores</div>${catBlock}</div>
       <div class="brief-col"><div class="bh" style="font-size:12px">Insiders &gt; $1M (Forms 4)</div>${insBlock}</div>
+      <div class="brief-col"><div class="bh" style="font-size:12px">Inversionistas importantes (13F)</div>${nhBlock}</div>
       <div class="brief-col"><div class="bh" style="font-size:12px">Riesgos / rompe-tesis</div>${riskBlock}</div>
     </div></div>`;
 

@@ -242,6 +242,27 @@ def _insider_highlights(trades: list[dict] | None,
     return out[:6]
 
 
+def _notable_holders(rows: list[dict] | None, limit: int = 8) -> list[dict]:
+    """Recognized 13F investors holding the name, largest position first.
+
+    Passthrough of `EdgarProvider.notable_holders` output, trimmed to the top
+    `limit` and shaped for the report card. Empty list is a valid answer (no
+    recognized investor from the registry holds the name) — never fabricated.
+    """
+    out = []
+    for r in (rows or []):
+        if (r.get("value") or 0) <= 0:
+            continue
+        out.append({
+            "investor": r.get("investor"),
+            "value": r.get("value"),
+            "shares": r.get("shares"),
+            "options": r.get("options") or 0,
+            "as_of": r.get("as_of"),
+        })
+    return out[:limit]
+
+
 def _risks(packet: dict, scorecard: dict) -> list[str]:
     a = packet["annual"]
     rev, ni = a["revenue"], a["net_income"]
@@ -299,6 +320,7 @@ def company_brief(packet: dict, scorecard: dict, targets: dict) -> dict:
             "levels": _levels(targets),
             "catalysts": _catalysts(md.get("earnings"), as_of),
             "insiders": _insider_highlights(md.get("insiders")),
+            "notable_holders": _notable_holders(md.get("notable_holders")),
             "risks": _risks(packet, scorecard),
         },
     }

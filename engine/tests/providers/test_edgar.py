@@ -6,7 +6,11 @@ from pathlib import Path
 import httpx
 
 from wbj.providers.cache import Cache
-from wbj.providers.edgar import EDGAR_USER_AGENT, EdgarProvider
+from wbj.providers.edgar import (
+    EDGAR_USER_AGENT,
+    EdgarProvider,
+    normalize_issuer,
+)
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "edgar"
 
@@ -284,3 +288,172 @@ def test_cik_for_and_companyfacts_use_distinct_cache_entries(tmp_path):
     # tickers map cached under a fixed global key regardless of ticker
     assert cache.get("_GLOBAL", "tickers") == _load_fixture("tickers_sample")
     assert cache.get("CIK0001045810", "companyfacts") == _load_fixture("companyfacts_sample")
+
+
+# --- normalize_issuer --------------------------------------------------------
+
+
+def test_normalize_issuer_reconciles_corporate_suffixes():
+    # A 13F's spelling and EDGAR's title must collapse to the same key.
+    assert normalize_issuer("NVIDIA CORPORATION") == "NVIDIA"
+    assert normalize_issuer("NVIDIA CORP") == "NVIDIA"
+    assert normalize_issuer("NVIDIA CORPORATION") == normalize_issuer("NVIDIA CORP")
+
+
+def test_normalize_issuer_strips_punctuation_and_class_descriptors():
+    assert normalize_issuer("Berkshire Hathaway Inc. CL B") == "BERKSHIRE HATHAWAY"
+
+
+def test_normalize_issuer_empty_input_is_empty_string():
+    assert normalize_issuer(None) == ""
+    assert normalize_issuer("") == ""
+
+
+# --- notable_holders (13F) ---------------------------------------------------
+
+
+def _subs_13f(accession, filing_date):
+    return {"filings": {"recent": {
+        "form": ["13F-HR"],
+        "accessionNumber": [accession],
+        "filingDate": [filing_date],
+    }}}
+
+
+def _infotable_xml(rows):
+    """rows: list of (name, cusip, value, shares, put_call_or_None)."""
+    blocks = []
+    for name, cusip, value, shares, pc in rows:
+        pcx = f"<putCall>{pc}</putCall>" if pc else ""
+        blocks.append(
+            f"<infoTable><nameOfIssuer>{name}</nameOfIssuer>"
+            f"<cusip>{cusip}</cusip><value>{value}</value>"
+            f"<shrsOrPrnAmt><sshPrnamt>{shares}</sshPrnamt>"
+            f"<sshPrnamtType>SH</sshPrnamtType></shrsOrPrnAmt>{pcx}</infoTable>"
+        )
+    return "<informationTable>" + "".join(blocks) + "</informationTable>"
+
+
+# A recent filer that holds NVIDIA (two share lots + one call) and Apple;
+# a second filer whose latest 13F-HR is a year stale.
+_NVDA_ROWS = [
+    ("NVIDIA CORPORATION", "67066G104", 7000000, 40000, None),
+    ("NVIDIA CORPORATION", "67066G104", 1000000, 6000, None),
+    ("NVIDIA CORPORATION", "67066G104", 500000, 3000, "Call"),
+    ("APPLE INC", "037833100", 200000, 1000, None),
+]
+
+
+def _notable_handler(request):
+    path = request.url.path
+    if "submissions/CIK0000000111" in path:
+        return httpx.Response(200, json=_subs_13f("0001-11-000001", "2026-05-15"))
+    if "submissions/CIK0000000222" in path:
+        return httpx.Response(200, json=_subs_13f("0002-22-000001", "2025-05-15"))
+    if path.endswith("/index.json"):
+        return httpx.Response(200, json={"directory": {"item": [
+            {"name": "primary_doc.xml", "size": "100"},
+            {"name": "infotable.xml", "size": "5000"},
+        ]}})
+    if path.endswith("infotable.xml"):
+        return httpx.Response(200, text=_infotable_xml(_NVDA_ROWS))
+    return httpx.Response(404)
+
+
+def _patch_registry(monkeypatch, registry):
+    monkeypatch.setattr(
+        "wbj.providers.edgar.NOTABLE_13F_FILERS", registry
+    )
+
+
+def test_notable_holders_aggregates_share_lots_and_counts_options(tmp_path, monkeypatch):
+    _patch_registry(monkeypatch, {111: "Filer One"})
+    p = _make_provider(tmp_path, _notable_handler)
+
+    rows = p.notable_holders("NVIDIA CORP", as_of="2026-05-20")
+
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["investor"] == "Filer One"
+    assert r["value"] == 8_000_000  # two SH lots summed, the Call excluded
+    assert r["shares"] == 46_000
+    assert r["options"] == 1
+    assert r["as_of"] == "2026-05-15"
+    assert r["cusip"] == "67066G104"
+
+
+def test_notable_holders_excludes_stale_filings(tmp_path, monkeypatch):
+    # Filer 222's only 13F-HR is ~1yr old -> not a current holding, skipped
+    # before its info table is ever fetched.
+    _patch_registry(monkeypatch, {222: "Stale Filer"})
+    p = _make_provider(tmp_path, _notable_handler)
+
+    rows = p.notable_holders("NVIDIA CORP", as_of="2026-05-20")
+
+    assert rows == []
+
+
+def test_notable_holders_sorts_by_position_value_desc(tmp_path, monkeypatch):
+    _patch_registry(monkeypatch, {111: "Big", 333: "Small"})
+
+    def handler(request):
+        path = request.url.path
+        if "submissions/CIK0000000333" in path:
+            return httpx.Response(200, json=_subs_13f("0003-33-000001", "2026-05-15"))
+        if "submissions/CIK0000000111" in path:
+            return httpx.Response(200, json=_subs_13f("0001-11-000001", "2026-05-15"))
+        if path.endswith("/index.json"):
+            return httpx.Response(200, json={"directory": {"item": [
+                {"name": "infotable.xml", "size": "5000"}]}})
+        if path.endswith("infotable.xml"):
+            small = [("NVIDIA CORP", "67066G104", 500000, 3000, None)]
+            rows = _NVDA_ROWS if "000111000001" in path else small
+            return httpx.Response(200, text=_infotable_xml(rows))
+        return httpx.Response(404)
+
+    p = _make_provider(tmp_path, handler)
+    rows = p.notable_holders("NVIDIA CORP", as_of="2026-05-20")
+
+    assert [r["investor"] for r in rows] == ["Big", "Small"]
+    assert rows[0]["value"] > rows[1]["value"]
+
+
+def test_notable_holders_empty_when_name_not_held(tmp_path, monkeypatch):
+    _patch_registry(monkeypatch, {111: "Filer One"})
+    p = _make_provider(tmp_path, _notable_handler)
+
+    # Filer holds NVIDIA + Apple only; a name absent from the table yields [].
+    rows = p.notable_holders("TESLA INC", as_of="2026-05-20")
+
+    assert rows == []
+
+
+def test_notable_holders_empty_for_blank_issuer(tmp_path, monkeypatch):
+    _patch_registry(monkeypatch, {111: "Filer One"})
+    p = _make_provider(tmp_path, _notable_handler)
+
+    assert p.notable_holders("", as_of="2026-05-20") == []
+
+
+def test_notable_holders_caches_parsed_infotable_by_accession(tmp_path, monkeypatch):
+    _patch_registry(monkeypatch, {111: "Filer One"})
+    calls = {"infotable": 0}
+
+    def handler(request):
+        path = request.url.path
+        if "submissions" in path:
+            return httpx.Response(200, json=_subs_13f("0001-11-000001", "2026-05-15"))
+        if path.endswith("/index.json"):
+            return httpx.Response(200, json={"directory": {"item": [
+                {"name": "infotable.xml", "size": "5000"}]}})
+        if path.endswith("infotable.xml"):
+            calls["infotable"] += 1
+            return httpx.Response(200, text=_infotable_xml(_NVDA_ROWS))
+        return httpx.Response(404)
+
+    p = _make_provider(tmp_path, handler)
+    p.notable_holders("NVIDIA CORP", as_of="2026-05-20")
+    p.notable_holders("NVIDIA CORP", as_of="2026-05-20")
+
+    # The multi-MB info table is parsed once and reused from cache.
+    assert calls["infotable"] == 1
