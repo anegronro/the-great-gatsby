@@ -145,9 +145,15 @@ def place_order(payload: dict) -> dict:
                 "note": "Robinhood no está configurado (faltan RH_USERNAME/"
                         "RH_PASSWORD en API/.env). No se envió nada."}
 
-    equity = rh_provider.buying_power() or PROFILE_CAPITAL
+    # Regla de Angel: nunca arriesgar más de 3% de la cuenta de $1,000 ($30) por
+    # trade. El riesgo se dimensiona sobre $1,000 (o menos, si el poder de compra
+    # vivo es menor) — NUNCA sobre un balance mayor. El poder de compra solo capa
+    # el notional (no puedes comprar más de lo que tienes en efectivo).
+    buying_power = rh_provider.buying_power()
+    risk_base = min(PROFILE_CAPITAL, buying_power) if buying_power else PROFILE_CAPITAL
+    cap_notional = buying_power or PROFILE_CAPITAL
     ticket = build_ticket(ticker, "buy", entry=entry, stop=stop,
-                          equity=equity, risk_frac=0.03, max_notional=equity)
+                          equity=risk_base, risk_frac=0.03, max_notional=cap_notional)
     if not ticket.tradeable:
         return {"ok": False, "status": "not_tradeable", "note": ticket.reason}
 
