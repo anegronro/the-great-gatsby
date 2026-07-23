@@ -1,10 +1,10 @@
 # Perfil de Inversionista — Angel Negron
 
 ## 1. ¿Cuál es tu objetivo principal al invertir?
-Crecimiento de capital y generación de ingresos.
+Crecimiento de capital
 
 ## 2. ¿En cuánto tiempo esperas alcanzar ese objetivo?
-Menos de 1 año (corto plazo).
+3-5 años.
 
 ## 3. ¿Qué porcentaje de tu capital estás dispuesto a perder en una inversión?
 Más de 10%.
@@ -25,7 +25,7 @@ Agresivo y especulativo.
 Semanal, mensual, o únicamente cuando aparezcan oportunidades importantes.
 
 ## 9. ¿Necesitarás retirar parte del capital próximamente?
-Sí: retiro parcial en 6–12 meses.
+No.
 
 ## 10. ¿Qué debería priorizar el agente al recomendar una operación?
 1. Mayor probabilidad de éxito.
@@ -34,7 +34,7 @@ Sí: retiro parcial en 6–12 meses.
 4. Mejora del *timing* en las posiciones.
 
 ## 11. ¿Cuál es tu expectativa?
-Generar $5,000 USD mensuales, equivalente a $60,000 USD anuales.
+Generar $2,000 USD mensuales, equivalente a $24,000 USD anuales.
 
 ## 12. ¿Capital disponible para la cuenta?
 $1,000 USD.
@@ -51,10 +51,22 @@ y el stop-loss de cada recomendación.
 
 ## Notas para el agente
 
-- Perfil **agresivo y de corto plazo** con **necesidad de liquidez cercana (6–12 meses)**.
-  Hay tensión entre la meta de ingreso y el horizonte: priorizar setups con buena
-  relación riesgo/beneficio y probabilidad favorable.
-- Se valora explícitamente ayuda con **entradas, salidas y timing**: toda recomendación
-  lleva niveles concretos (entrada, stop, objetivo).
-- **Regla de riesgo:** cada operación se dimensiona para arriesgar 3–5% del capital.
-- **Restricción de mercado:** solo instrumentos de EE. UU.; nunca forex.
+- **Horizonte:** mediano plazo, **3–5 años** (Q2), **sin necesidad de retirar capital
+  próximamente** (Q9). No es un perfil de liquidez inmediata: las posiciones pueden
+  dejarse madurar mientras la tesis siga vigente.
+- **Estilo y tolerancia:** **agresivo y especulativo** (Q7), con alta tolerancia al
+  drawdown — ante una caída de 15% mantiene o promedia (Q3, Q4). Esto habilita setups de
+  mayor convicción, **no** sobre-apalancamiento.
+- **Tensión real a vigilar (aritmética, no de liquidez):** la meta de ingreso de
+  **$2,000/mes** ($24,000/año, Q11) es muy agresiva frente a un capital de **$1,000**
+  (Q12) y un riesgo de 3–5% por operación (Q13). Trátala como **aspiración, no como
+  cuota**: la prioridad #1 es la **probabilidad de éxito** (Q10) y el objetivo de fondo es
+  **crecimiento de capital a 3–5 años** (Q1/Q2), no renta forzada mes a mes. Nunca subir
+  el riesgo por posición para "llegar" al número.
+- **Instrumentos:** acciones, ETF y opciones (Q6); **solo mercado de EE. UU.; nunca
+  forex** (Q14).
+- **Regla de riesgo (manda sobre todo lo demás):** cada operación se dimensiona para
+  arriesgar **3–5% del capital** ($30–$50 sobre $1,000) y define el tamaño de posición y
+  el stop-loss (Q13). Sin stop calculable, no se abre la posición.
+- **Timing explícito:** toda recomendación lleva niveles concretos de **entrada, stop y
+  objetivo** y una relación riesgo/beneficio favorable (Q8, Q10 #3–#4).
