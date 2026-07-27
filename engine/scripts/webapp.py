@@ -318,10 +318,12 @@ PAGE = """<!doctype html>
   .modal b { color:var(--ink); }
   .levels { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:6px 0 10px; }
   .lvl { background:var(--page); border-radius:12px; padding:12px 14px; }
+  .lvl.inval { background:var(--red-bg); }
+  .lvl.salida { background:var(--green-bg); }
   .lvl .k { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink2); }
   .lvl .v { font-size:20px; font-weight:800; margin-top:2px; }
   .lvl.entrada .v { color:var(--ink); } .lvl.inval .v { color:var(--red); }
-  .lvl.salida .v { color:var(--green); }
+  .lvl.salida .v { color:#12543C; }
   .wl { list-style:none; margin:2px 0 10px; padding:0; }
   .wl li { padding:7px 0; border-top:1px solid var(--grid); font-size:14px; display:flex;
     justify-content:space-between; gap:10px; }
