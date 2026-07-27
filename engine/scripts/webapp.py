@@ -9,6 +9,7 @@ on the reference screenshots in Referencias/.
 from __future__ import annotations
 
 import json
+import math
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -185,16 +186,57 @@ def place_order(payload: dict) -> dict:
     return res
 
 
+def _emblem_svg(attrs: str = "") -> str:
+    """Art Déco 'G' emblem: ink coin, gold sunburst ring, chevrons, green light.
+
+    Rays are baked (no JS) so the SAME markup serves as inline header logo and
+    as the /favicon.svg. `attrs` lets callers add class/size."""
+    cx = cy = 50
+    rays = ""
+    n, r1, r2 = 48, 37, 43
+    for i in range(n):
+        a = i / n * 2 * math.pi
+        x1, y1 = cx + r1 * math.cos(a), cy + r1 * math.sin(a)
+        x2, y2 = cx + r2 * math.cos(a), cy + r2 * math.sin(a)
+        op = 0.9 if i % 2 else 0.5
+        rays += (f'<line x1="{x1:.2f}" y1="{y1:.2f}" x2="{x2:.2f}" y2="{y2:.2f}" '
+                 f'stroke="#C6A15B" stroke-width="0.7" opacity="{op}"/>')
+    chev = ""
+    for s in (1, -1):
+        y = cy - s * 22
+        chev += (f'<path d="M{cx-9} {y} l4 {-3*s} l5 0 l0 {-4*s} l0 {4*s} l5 0 '
+                 f'l4 {3*s}" fill="none" stroke="#C6A15B" stroke-width="1.1"/>')
+    return (
+        f'<svg {attrs} viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" '
+        f'role="img" aria-label="The Great Gatsby">'
+        f'<circle cx="50" cy="50" r="47" fill="#1C1710"/>'
+        f'<circle cx="50" cy="50" r="44" fill="none" stroke="#C6A15B" stroke-width="0.9"/>'
+        f'<circle cx="50" cy="50" r="33" fill="none" stroke="#C6A15B" stroke-width="0.5" opacity="0.55"/>'
+        f'{rays}{chev}'
+        f'<text x="50" y="63" text-anchor="middle" '
+        f"font-family=\"Georgia,'Times New Roman',serif\" font-size=\"42\" fill=\"#F4ECD6\">G</text>"
+        f'<circle cx="50" cy="28" r="1.7" fill="#1E6B54"/>'
+        f'</svg>'
+    )
+
+
+FAVICON_SVG = _emblem_svg()
+EMBLEM_INLINE = _emblem_svg('class="emblem"')
+
+
 PAGE = """<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Great Gatsby — Scorecard</title>
 <style>
   :root { color-scheme: light;
-    --page:#edeff5; --card:#ffffff; --ink:#16181d; --ink2:#5b6270; --muted:#9aa1ad;
-    --grid:#eef0f4; --green:#22a06b; --green-bg:#e7f6ef; --purple:#7c5cfc;
-    --purple-bg:#f0ecfe; --orange:#f5a623; --orange-bg:#fef4e2; --red:#e5484d;
-    --red-bg:#fdecec; --blue:#3b82f6; --blue-bg:#e8f1fe; }
+    /* Paleta Art Déco "The Great Gatsby": crema, tinta cálida, oro y el verde
+       de la luz. --purple es el acento primario (botones/enlaces) = ORO. */
+    --page:#F2E8CF; --card:#FBF6E8; --ink:#1C1710; --ink2:#6E6046; --muted:#A9997C;
+    --grid:#E9DEC2; --green:#1E6B54; --green-bg:#E4EDE1; --purple:#A9822A;
+    --purple-bg:#F1E6C6; --orange:#BC841F; --orange-bg:#F3E8CB; --red:#A33A34;
+    --red-bg:#F1DDD6; --blue:#37766B; --blue-bg:#E1EBE6; --gold:#C6A15B; }
   * { margin:0; box-sizing:border-box; }
   body { background:var(--page); color:var(--ink);
     font-family:system-ui,-apple-system,"Segoe UI",sans-serif; padding:36px 20px 60px; }
@@ -238,7 +280,7 @@ PAGE = """<!doctype html>
   .card { background:var(--card); border-radius:18px; padding:24px;
     box-shadow:0 1px 3px rgba(20,22,30,.06); }
   .c-hero { grid-column:span 7; } .c-words { grid-column:span 5; }
-  .c-chart { grid-column:span 12; background:#0e1113; color:#e8eaed; }
+  .c-chart { grid-column:span 12; background:#1A160D; color:#EFE7D2; }
   .c-score { grid-column:span 5; } .c-target { grid-column:span 7; }
   .c-brief { grid-column:span 12; }
   @media (max-width:860px) { .c-hero,.c-words,.c-chart,.c-score,.c-target { grid-column:span 12; } }
@@ -302,16 +344,16 @@ PAGE = """<!doctype html>
   .rh-result.warn { background:var(--orange-bg); color:#9a6a12; }
   .rh-result.err { background:var(--red-bg); color:#a3282c; }
   .rh-note { font-size:12px; color:var(--muted); margin-top:8px; }
-  .c-chart h2 { color:#fff; } .c-chart .sub { color:#8b929c; }
+  .c-chart h2 { color:#F4ECD6; } .c-chart .sub { color:#B4A483; }
   .chart-head { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin:8px 0 4px; }
   .chart-head .px { font-size:34px; font-weight:800; letter-spacing:-.02em; }
   .chart-head .chg { font-size:14px; font-weight:700; }
   .chart-head .chg.up { color:#26d07c; } .chart-head .chg.down { color:#ff5a5f; }
-  .chart-head .rng { color:#8b929c; font-size:13px; }
+  .chart-head .rng { color:#B4A483; font-size:13px; }
   #tvchart { height:340px; margin-top:10px; }
   .periods { display:flex; gap:8px; margin-top:12px; }
   .periods button { font:inherit; font-size:13px; font-weight:700; padding:6px 16px;
-    border:0; border-radius:99px; background:transparent; color:#8b929c; cursor:pointer; }
+    border:0; border-radius:99px; background:transparent; color:#B4A483; cursor:pointer; }
   .periods button.on { background:#1d2b22; color:#26d07c; }
   .tglegend { display:flex; gap:18px; margin-top:10px; font-size:12.5px; flex-wrap:wrap; }
   .tglegend span { display:inline-flex; align-items:center; gap:7px; color:#aab1bb; }
@@ -379,22 +421,35 @@ PAGE = """<!doctype html>
   /* --- Estados de la app: landing (bienvenida centrada) vs results --- */
   .hero { transition: all .38s cubic-bezier(.4,0,.2,1); }
   .subtitle { font-size:17px; color:var(--ink2); margin:2px 0 0; letter-spacing:-.01em; }
-  #brand { cursor:default; }
+  /* --- Logo Art Déco: emblema + wordmark (apilado en landing, en línea en results) --- */
+  #brand { cursor:default; display:flex; align-items:center; gap:16px; }
+  .brand .emblem { flex:none; display:block; }
+  .wm-the, .wm-big, .wm-line { font-family:Georgia,'Times New Roman',serif;
+    color:var(--ink); font-weight:400; display:block; }
+  .wm-the { letter-spacing:.44em; color:#3a3327; }
+  .wm-big { letter-spacing:.06em; line-height:1.0; }
+  .wm-line { letter-spacing:.20em; }
   /* Landing: bloque de bienvenida centrado en la ventana */
   .app.landing { min-height:calc(100vh - 96px); display:flex; flex-direction:column;
     justify-content:center; }
   .app.landing .hero { text-align:center; }
   .app.landing .kicker { text-align:center; margin-bottom:10px; }
-  .app.landing #brand { font-size:44px; margin-bottom:2px; letter-spacing:-.03em; }
+  .app.landing #brand { flex-direction:column; gap:14px; margin-bottom:6px; }
+  .app.landing .emblem { width:78px; height:78px; }
+  .app.landing .wm-line { display:none; }
+  .app.landing .wm-the { font-size:19px; padding-left:.44em; margin-bottom:2px; }
+  .app.landing .wm-big { font-size:52px; }
   .app.landing .subtitle { font-size:19px; margin-bottom:8px; }
   .app.landing .topbar { margin:26px auto 0; justify-content:center; }
   .app.landing .foot { display:none; }
   /* Results: encabezado colapsado a una barra superior compacta */
   .app.results .kicker, .app.results .subtitle { display:none; }
   .app.results .hero { display:flex; align-items:center; gap:20px; margin-bottom:6px; }
-  .app.results #brand { font-size:20px; margin-bottom:0; white-space:nowrap; cursor:pointer;
-    color:var(--purple); }
-  .app.results #brand:hover { filter:brightness(1.1); }
+  .app.results #brand { gap:12px; margin-bottom:0; white-space:nowrap; cursor:pointer; }
+  .app.results .emblem { width:40px; height:40px; }
+  .app.results .wm-stack { display:none; }
+  .app.results .wm-line { font-size:21px; }
+  .app.results #brand:hover { filter:brightness(1.06); }
   .app.results .topbar { flex:1; margin:0; }
   /* --- Tarjeta de loading: checklist de etapas del análisis --- */
   .loadcard h2 { font-size:18px; }
@@ -417,8 +472,18 @@ PAGE = """<!doctype html>
     font-variant-numeric:tabular-nums; font-weight:600; }
 </style></head><body><div class="app landing" id="app"><div class="wrap">
   <header class="hero">
-    <div class="kicker">The Great Gatsby · Motor de Análisis · SEC EDGAR en vivo</div>
-    <h1 id="brand">Bienvenido a The Great Gatsby</h1>
+    <div id="brand" class="brand" title="Volver al inicio">
+      __EMBLEM__
+      <div class="wm">
+        <div class="wm-stack">
+          <span class="wm-the">THE</span>
+          <span class="wm-big">GREAT</span>
+          <span class="wm-big">GATSBY</span>
+        </div>
+        <div class="wm-line">THE GREAT GATSBY</div>
+      </div>
+    </div>
+    <div class="kicker">Motor de Análisis · SEC EDGAR en vivo</div>
     <p class="subtitle">Tu Especialista Financiero</p>
     <div class="topbar">
       <div class="searchbox">
@@ -456,7 +521,6 @@ function setMode(mode) {
   const landing = mode === 'landing';
   app.classList.toggle('landing', landing);
   app.classList.toggle('results', !landing);
-  brand.textContent = landing ? 'Bienvenido a The Great Gatsby' : 'The Great Gatsby';
 }
 
 // Clic en el título (en modo resultados) regresa a la bienvenida centrada.
@@ -849,7 +913,7 @@ function setPeriod(p) {
       stroke="rgba(139,146,156,.14)" stroke-width="1"/>`;
   }).join('');
   const dates = [0, Math.floor(slice.length / 2), slice.length - 1].map(i =>
-    `<text x="${X(i)}" y="${H - 8}" fill="#8b929c" font-size="11.5"
+    `<text x="${X(i)}" y="${H - 8}" fill="#B4A483" font-size="11.5"
       text-anchor="${i === 0 ? 'start' : i === slice.length - 1 ? 'end' : 'middle'}">${slice[i].time}</text>`).join('');
 
   // líneas de target punteadas con etiqueta tipo píldora (como la referencia)
@@ -969,6 +1033,9 @@ async function run(t) {
 }
 </script></body></html>"""
 
+# Bake the inline emblem into the page (kept out of the f-string-hostile CSS/JS).
+PAGE = PAGE.replace("__EMBLEM__", EMBLEM_INLINE)
+
 
 class Handler(BaseHTTPRequestHandler):
     def _json(self, obj: dict | list, code: int = 200) -> None:
@@ -986,6 +1053,13 @@ class Handler(BaseHTTPRequestHandler):
             body = PAGE.encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif url.path == "/favicon.svg":
+            body = FAVICON_SVG.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/svg+xml")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
