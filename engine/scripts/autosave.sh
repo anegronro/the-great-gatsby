@@ -28,7 +28,8 @@ git add -A
 # Si tras el add no quedó nada staged (p.ej. solo archivos ignorados), salir.
 git diff --cached --quiet && exit 0
 
-echo "[$(ts)] cambios detectados -> commit + deploy" >> "$LOG"
+# Solo commitea; el git hook post-commit dispara el deploy (push + VPS). Así hay
+# un único camino de despliegue, venga el commit de aquí o de una edición manual.
+echo "[$(ts)] cambios detectados -> commit" >> "$LOG"
 git commit -q -m "autosave: $(ts)" >> "$LOG" 2>&1
-./engine/scripts/deploy.sh >> "$LOG" 2>&1
-echo "[$(ts)] deploy terminó (rc=$?)" >> "$LOG"
+echo "[$(ts)] commit hecho (el hook post-commit despliega)" >> "$LOG"
