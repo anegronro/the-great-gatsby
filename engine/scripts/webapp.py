@@ -267,7 +267,11 @@ PAGE = """<!doctype html>
     border:0; border-radius:14px; background:var(--purple); color:#fff; cursor:pointer;
     box-shadow:0 1px 3px rgba(20,22,30,.15); white-space:nowrap; }
   .discover:hover { filter:brightness(1.08); }
-  table.scr { width:100%; border-collapse:collapse; margin-top:14px; font-size:13.5px; }
+  /* En móvil la tabla no cabe: contenedor con scroll horizontal en vez de
+     cortar las columnas. min-width mantiene columnas legibles y fuerza el scroll. */
+  .scr-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; margin-top:14px; }
+  table.scr { width:100%; min-width:560px; border-collapse:collapse; font-size:13.5px; }
+  table.scr th, table.scr td { white-space:nowrap; }
   table.scr th { text-align:left; font-size:11.5px; text-transform:uppercase;
     letter-spacing:.08em; color:var(--muted); padding:0 10px 10px 0; font-weight:600; }
   table.scr td { padding:11px 10px 11px 0; border-top:1px solid var(--grid);
@@ -348,10 +352,12 @@ PAGE = """<!doctype html>
     display:flex; gap:8px; align-items:flex-start; margin:4px 0 16px; }
   .ticket { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:8px 0 16px; }
   @media (max-width:720px){ .ticket { grid-template-columns:repeat(2,1fr); } }
-  .tk { background:var(--grid); border-radius:12px; padding:12px 14px; }
-  .tk .k { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink2); font-weight:700; }
-  .tk .v { font-size:22px; font-weight:800; letter-spacing:-.01em; margin-top:2px; }
-  .tk.buy .v { color:var(--green); } .tk.stop .v { color:var(--red); }
+  /* Acotado a .ticket: la tabla del screener también usa .tk (columna TICKER) y
+     no debe heredar este recuadro con fondo. */
+  .ticket .tk { background:var(--grid); border-radius:12px; padding:12px 14px; }
+  .ticket .tk .k { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink2); font-weight:700; }
+  .ticket .tk .v { font-size:22px; font-weight:800; letter-spacing:-.01em; margin-top:2px; }
+  .ticket .tk.buy .v { color:var(--green); } .ticket .tk.stop .v { color:var(--red); }
   .rh-confirm { display:flex; gap:10px; align-items:flex-start; font-size:13.5px;
     color:var(--ink); margin:2px 0 14px; cursor:pointer; }
   .rh-confirm input { width:20px; height:20px; margin-top:1px; accent-color:var(--red); }
@@ -1029,10 +1035,10 @@ document.getElementById('discoverBtn').addEventListener('click', async () => {
     screenCard.innerHTML = `<h2>Empresas descubiertas — top ${rows.length} por puntaje</h2>
       <div class="sub">Prefiltro: ventas $0.8B–$30B · margen neto > 8% · crecimiento > 5% ·
       datos SEC EDGAR · clasificación de research, no asesoría. Toca un ticker para el análisis completo.</div>
-      <table class="scr"><thead><tr><th>#</th><th>Ticker</th><th>Empresa</th>
+      <div class="scr-wrap"><table class="scr"><thead><tr><th>#</th><th>Ticker</th><th>Empresa</th>
         <th style="text-align:right">Ventas</th><th style="text-align:right">Crec.</th>
         <th style="text-align:right">Margen</th><th style="text-align:right">Target medio</th>
-        <th>Puntaje</th></tr></thead><tbody>${trs}</tbody></table>`;
+        <th>Puntaje</th></tr></thead><tbody>${trs}</tbody></table></div>`;
     screenCard.style.display = 'block';
     status.textContent = '';
     screenCard.querySelectorAll('.tk').forEach(el =>
