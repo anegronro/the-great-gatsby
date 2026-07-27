@@ -36,6 +36,10 @@ from wbj.targets import live_price, narrative, price_history, price_targets
 # scripts/serve_tailnet.sh.
 HOST = os.environ.get("WBJ_HOST", "127.0.0.1")
 PORT = int(os.environ.get("WBJ_PORT", "8765"))
+# Modo solo-análisis: `WBJ_READONLY=1` apaga la colocación de órdenes. Se usa en
+# el despliegue del VPS (24/7) — el análisis sí, pero el gatillo de dinero real
+# NUNCA vive en un servidor de nube; las órdenes se colocan solo desde la Mac.
+READONLY = bool(os.environ.get("WBJ_READONLY"))
 _lock = threading.Lock()
 
 # Capital del perfil (Perfil Inversionista/Angel Negron.md) — se usa para el
@@ -62,7 +66,9 @@ def _order_preview(ticker: str, brief: dict) -> dict | None:
 
     # Reflect the live account when Robinhood is connected, so funding shows up
     # in the panel automatically; otherwise fall back to the profile capital.
-    buying_power = rh_provider.buying_power() if rh_provider.available else None
+    # In read-only mode (VPS) never touch Robinhood.
+    buying_power = (rh_provider.buying_power()
+                    if rh_provider.available and not READONLY else None)
     ticket = _size_for_account(ticker, lv.get("entrada"), lv.get("invalidacion"),
                                buying_power)
     out = ticket.as_dict()
@@ -146,7 +152,8 @@ def analyze(ticker: str) -> dict:
     result["history"] = _history(packet)
     result["chart"] = price_history(ticker)
     result["order"] = _order_preview(ticker, result["brief"])
-    result["rh_configured"] = rh_provider.available
+    result["rh_configured"] = rh_provider.available and not READONLY
+    result["readonly"] = READONLY
     return result
 
 
@@ -162,6 +169,11 @@ def place_order(payload: dict) -> dict:
     entry = payload.get("entry")
     stop = payload.get("stop")
     confirm = payload.get("confirm") is True
+
+    if READONLY:
+        return {"ok": False, "status": "readonly",
+                "note": "Modo solo análisis (VPS). Las órdenes reales se colocan "
+                        "desde la app en tu Mac. No se envió nada."}
 
     if not rh_provider.available:
         return {"ok": False, "status": "not_configured",
@@ -837,17 +849,22 @@ function orderHtml(d) {
       <div class="brief-note" style="margin-top:12px">No hay orden por ahora: ${o.reason || 'niveles insuficientes.'}</div>${basis}` };
   }
   const cfg = d.rh_configured;
+  const ro = d.readonly;
   const capBasis = o.equity_basis || '';
-  const send = cfg
-    ? `<button class="rh-send" id="rhSend" disabled onclick="submitOrder()">Enviar a Robinhood</button>`
-    : `<button class="rh-send" disabled>Conecta Robinhood en API/.env para habilitar</button>`;
-  const confirm = cfg
-    ? `<label class="rh-confirm"><input type="checkbox" id="rhChk" onchange="document.getElementById('rhSend').classList.toggle('armed', this.checked); document.getElementById('rhSend').disabled=!this.checked;">
-        Entiendo que esto envía una <b>orden real</b> de compra con dinero real a mi cuenta de Robinhood, con su stop de protección adjunto.</label>`
-    : '';
+  const banner = ro
+    ? `<div class="rh-banner" style="background:var(--purple-bg);border-color:#e6d29a;color:#7a5f1e">📊 Modo solo análisis — la orden se envía desde la app en tu Mac, no desde aquí.</div>`
+    : `<div class="rh-banner">⚠ DINERO REAL — esta orden se manda a Robinhood cuando TÚ la confirmas. El agente no la dispara solo.</div>`;
+  const send = ro
+    ? `<button class="rh-send" disabled>Enviar solo desde la Mac</button>`
+    : (cfg
+      ? `<button class="rh-send" id="rhSend" disabled onclick="submitOrder()">Enviar a Robinhood</button>`
+      : `<button class="rh-send" disabled>Conecta Robinhood en API/.env para habilitar</button>`);
+  const confirm = (ro || !cfg) ? '' :
+    `<label class="rh-confirm"><input type="checkbox" id="rhChk" onchange="document.getElementById('rhSend').classList.toggle('armed', this.checked); document.getElementById('rhSend').disabled=!this.checked;">
+        Entiendo que esto envía una <b>orden real</b> de compra con dinero real a mi cuenta de Robinhood, con su stop de protección adjunto.</label>`;
   return { show:true, html:`<h2>Entrar orden</h2>
     <div class="sub">Compra dimensionada al 3–5% de riesgo · stop adjunto · tu clic la envía</div>
-    <div class="rh-banner">⚠ DINERO REAL — esta orden se manda a Robinhood cuando TÚ la confirmas. El agente no la dispara solo.</div>
+    ${banner}
     <div class="ticket">
       <div class="tk"><div class="k">Ticker</div><div class="v">${o.ticker}</div></div>
       <div class="tk buy"><div class="k">Comprar</div><div class="v">${o.qty} <span style="font-size:13px;color:var(--ink2)">acc.</span></div></div>
