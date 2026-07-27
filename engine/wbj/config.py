@@ -1,8 +1,48 @@
 """Configuration loader for wbj compute engine."""
 
+import shutil
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from dotenv import dotenv_values
+
+# Servicio bajo el que viven los secretos en el Llavero de macOS. Una entrada por
+# variable: el "account" es el nombre de la variable (p.ej. RH_PASSWORD).
+KEYCHAIN_SERVICE = "warren-buffett-jr"
+
+
+def _keychain_get(name: str) -> str | None:
+    """Lee un secreto del Llavero de macOS, o None si no está.
+
+    Nunca lanza: si no hay `security` (no es macOS), si la entrada no existe o si
+    el Llavero está bloqueado, se devuelve None y el llamador cae al .env.
+    """
+    security = shutil.which("security")
+    if not security:
+        return None
+    try:
+        out = subprocess.run(
+            [security, "find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", name, "-w"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return None
+    if out.returncode != 0:
+        return None
+    return out.stdout.strip() or None
+
+
+def _secret(name: str, env_vars: dict) -> str | None:
+    """Resuelve un secreto: primero el .env, y si no está, el Llavero.
+
+    Este orden es deliberado: mantiene el .env como fuente ganadora mientras exista
+    la línea, así que la migración es "guardar en el Llavero y BORRAR la línea".
+    Mientras la línea siga ahí, el Llavero no se consulta — si la dejas, no estás
+    migrado, aunque la entrada del Llavero exista.
+    """
+    return (env_vars.get(name) or None) or _keychain_get(name)
 
 
 def _find_repo_root() -> Path:
@@ -79,8 +119,9 @@ def load_settings(env_file: Path | None = None) -> Settings:
     )
     judge_model = env_vars.get("JUDGE_MODEL") or "claude-opus-4-8"
     rh_username = env_vars.get("RH_USERNAME") or None
-    rh_password = env_vars.get("RH_PASSWORD") or None
-    rh_mfa_totp = env_vars.get("RH_MFA_TOTP") or None
+    # Contraseña y semilla TOTP: pueden vivir en el Llavero en vez del .env.
+    rh_password = _secret("RH_PASSWORD", env_vars)
+    rh_mfa_totp = _secret("RH_MFA_TOTP", env_vars)
 
     return Settings(
         fmp_api_key=fmp_api_key,

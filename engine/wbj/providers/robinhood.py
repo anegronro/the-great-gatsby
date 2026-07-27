@@ -22,10 +22,15 @@ is rejected here rather than mishandled.
 from __future__ import annotations
 
 import logging
+import pickle
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 logger = logging.getLogger(__name__)
+
+ACCOUNTS_URL = "https://api.robinhood.com/accounts/"
 
 # Where robin_stocks stores the session after a `store_session=True` login.
 # The web app never authenticates interactively — Angel runs scripts/rh_login.py
@@ -35,11 +40,11 @@ logger = logging.getLogger(__name__)
 SESSION_FILE = Path.home() / ".tokens" / "robinhood.pickle"
 
 try:  # unofficial deps; absence simply disables the provider
-    import pyotp
     import robin_stocks.robinhood as rh
+    from robin_stocks.robinhood.helper import set_login_state, update_session
 except ImportError:  # pragma: no cover - exercised only without the extra
-    pyotp = None
     rh = None
+    set_login_state = update_session = None
 
 
 class OrderRefused(RuntimeError):
@@ -61,61 +66,84 @@ class RobinhoodProvider:
 
     @property
     def available(self) -> bool:
-        """True only when the library is present and username+password are set.
+        """True when the library is present AND we can authenticate.
 
-        MFA (`rh_mfa_totp`) is optional here but effectively required by any
-        real Robinhood account with 2FA on; login simply fails without it.
+        Two ways to authenticate: credentials in API/.env, or a stored session
+        from the one-time `scripts/rh_login.py` (Plan B) — the session alone is
+        enough, since robin_stocks reuses it without the password.
         """
-        return bool(
-            rh is not None
-            and getattr(self.settings, "rh_username", None)
+        if rh is None:
+            return False
+        has_creds = bool(
+            getattr(self.settings, "rh_username", None)
             and getattr(self.settings, "rh_password", None)
         )
-
-    def _mfa_code(self) -> str | None:
-        secret = getattr(self.settings, "rh_mfa_totp", None)
-        if not secret or pyotp is None:
-            return None
-        return pyotp.TOTP(secret).now()
+        return has_creds or SESSION_FILE.exists()
 
     def _ensure_login(self) -> None:
+        """Load the stored session into robin_stocks — never authenticate here.
+
+        The web app must never call `rh.login`: on a stale/empty pickle that
+        function falls back to an interactive prompt (hanging a server thread)
+        and truncates the pickle on the way. Instead we read the token from the
+        pickle and set robin_stocks' session header directly. Creating/renewing
+        the pickle is `scripts/rh_login.py`'s job (interactive, on purpose).
+        """
         if self._logged_in:
             return
-        if not self.available:
-            raise OrderRefused(
-                "Robinhood no está configurado (faltan RH_USERNAME/RH_PASSWORD "
-                "en API/.env)."
-            )
-        # Plan B: reuse the stored session. Never authenticate interactively from
-        # here — if there is no session, refuse and tell Angel to run the one-time
-        # login, rather than block on robin_stocks' MFA input() prompt.
-        if not self._has_totp and not SESSION_FILE.exists():
+        if not SESSION_FILE.exists():
             raise OrderRefused(
                 "No hay sesión de Robinhood. Corre una vez en la terminal: "
                 ".venv/bin/python scripts/rh_login.py  (inicia sesión, teclea el "
                 "código MFA cuando lo pida, y guarda la sesión)."
             )
-        rh.login(
-            username=self.settings.rh_username,
-            password=self.settings.rh_password,
-            mfa_code=self._mfa_code(),
-            store_session=True,
-        )
+        try:
+            with open(SESSION_FILE, "rb") as f:
+                data = pickle.load(f)
+            token = f"{data['token_type']} {data['access_token']}"
+        except (OSError, EOFError, KeyError, pickle.UnpicklingError) as exc:
+            raise OrderRefused(
+                "La sesión de Robinhood está vacía o corrupta. Vuelve a correr "
+                ".venv/bin/python scripts/rh_login.py."
+            ) from exc
+        self._token = token
+        update_session("Authorization", token)
+        set_login_state(True)
         self._logged_in = True
 
-    @property
-    def _has_totp(self) -> bool:
-        return bool(getattr(self.settings, "rh_mfa_totp", None))
+    def _authed_get(self, url: str) -> Any | None:
+        """GET `url` with the loaded session token. Returns parsed JSON or None."""
+        self._ensure_login()
+        try:
+            r = httpx.get(url, headers={"Authorization": self._token}, timeout=15)
+        except httpx.HTTPError as exc:
+            logger.warning("robinhood GET %s failed: %s", url, exc)
+            return None
+        if r.status_code >= 400:
+            logger.warning("robinhood GET %s -> %d", url, r.status_code)
+            return None
+        try:
+            return r.json()
+        except ValueError:
+            return None
 
     # -- reads ----------------------------------------------------------------
 
+    def _default_account(self) -> dict | None:
+        """The account orders route to (is_default, else the first). Read-only."""
+        payload = self._authed_get(ACCOUNTS_URL)
+        results = (payload or {}).get("results") or []
+        if not results:
+            return None
+        return next((a for a in results if a.get("is_default")), results[0])
+
     def buying_power(self) -> float | None:
-        """Cash buying power, or None if unavailable/unparsable (reads never raise)."""
+        """Cash buying power of the default account, or None (reads never raise)."""
         if not self.available:
             return None
         try:
-            self._ensure_login()
-            val = rh.profiles.load_account_profile(info="buying_power")
+            acct = self._default_account()
+            val = (acct or {}).get("buying_power")
             return float(val) if val is not None else None
         except (ValueError, TypeError, KeyError, OrderRefused) as exc:
             logger.warning("robinhood buying_power failed: %s", exc)

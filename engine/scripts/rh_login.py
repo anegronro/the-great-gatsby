@@ -40,11 +40,26 @@ def main() -> int:
         print(f"\nFalló el login: {exc}", file=sys.stderr)
         return 1
 
-    # Confirmación no sensible: leer poder de compra prueba que la sesión sirve.
+    # OJO: rh.login() NO lanza cuando el login falla — imprime el error y sigue.
+    # Por eso la existencia del pickle no prueba nada: un archivo viejo de una
+    # sesión anterior sobrevive al fallo y hacía que este guion cantara "✅ Listo"
+    # sobre una sesión muerta. La ÚNICA prueba válida es una llamada autenticada.
     try:
         bp = rh.profiles.load_account_profile(info="buying_power")
-    except Exception:  # noqa: BLE001
-        bp = None
+    except Exception as exc:  # noqa: BLE001
+        print(f"\n❌ El login no quedó válido: {exc}", file=sys.stderr)
+        return 1
+
+    if bp is None:
+        print(
+            "\n❌ Login rechazado: la sesión no autentica.\n"
+            "   Causas típicas: contraseña incorrecta, o el MFA no se completó.\n"
+            "   Si cambiaste la contraseña, revisa la entrada del Llavero:\n"
+            '     security delete-generic-password -s "warren-buffett-jr" -a "RH_PASSWORD"\n'
+            '     security add-generic-password -s "warren-buffett-jr" -a "RH_PASSWORD" -w',
+            file=sys.stderr,
+        )
+        return 1
 
     if not SESSION_FILE.exists():
         print("\nSesión iniciada pero no se guardó el archivo esperado en "
@@ -52,8 +67,7 @@ def main() -> int:
         return 1
 
     print(f"\n✅ Listo. Sesión guardada en {SESSION_FILE}")
-    if bp is not None:
-        print(f"   Poder de compra de la cuenta: ${bp}")
+    print(f"   Poder de compra de la cuenta: ${bp}")
     print("   La webapp ya puede colocar órdenes (con tu clic). ")
     return 0
 
