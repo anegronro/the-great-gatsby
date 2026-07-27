@@ -44,8 +44,8 @@ rh_provider = RobinhoodProvider(settings)
 
 def _order_preview(ticker: str, brief: dict) -> dict | None:
     """Build a BUY ticket from the research levels (entrada=entry, invalidación=
-    stop), sized on the profile capital. Long-only, favorable-only. Returns None
-    when the research doesn't favor a clean long. Preview only — never places."""
+    stop). Long-only, favorable-only. Returns None when the research doesn't
+    favor a clean long. Preview only — never places."""
     interp = (brief or {}).get("interpretation") or {}
     # Only pre-fill an order when the research classification favors entering.
     if interp.get("classification") != "favorece":
@@ -53,14 +53,31 @@ def _order_preview(ticker: str, brief: dict) -> dict | None:
     lv = ((brief or {}).get("watch") or {}).get("levels") or {}
     if lv.get("status") != "ok":
         return None
-    ticket = build_ticket(
-        ticker, "buy",
-        entry=lv.get("entrada"), stop=lv.get("invalidacion"),
-        equity=PROFILE_CAPITAL, max_notional=PROFILE_CAPITAL,
-    )
+
+    # Reflect the live account when Robinhood is connected, so funding shows up
+    # in the panel automatically; otherwise fall back to the profile capital.
+    buying_power = rh_provider.buying_power() if rh_provider.available else None
+    ticket = _size_for_account(ticker, lv.get("entrada"), lv.get("invalidacion"),
+                               buying_power)
     out = ticket.as_dict()
-    out["equity_basis"] = "perfil $1,000 (preview)"
+    out["equity_basis"] = (
+        f"cuenta margin (vivo): ${buying_power:,.2f}" if buying_power is not None
+        else "perfil $1,000 (preview)"
+    )
     return out
+
+
+def _size_for_account(ticker: str, entry, stop, buying_power: float | None):
+    """Size a BUY ticket by Angel's rule, shared by preview and placement.
+
+    Risk is 3% of $1,000 (or of the live buying power if smaller) — never of a
+    larger balance; buying power only caps the notional. `buying_power=None`
+    (Robinhood not connected / read failed) falls back to the profile capital.
+    """
+    risk_base = min(PROFILE_CAPITAL, buying_power) if buying_power else PROFILE_CAPITAL
+    cap_notional = buying_power or PROFILE_CAPITAL
+    return build_ticket(ticker, "buy", entry=entry, stop=stop,
+                        equity=risk_base, risk_frac=0.03, max_notional=cap_notional)
 
 
 def ticker_map() -> list[dict]:
@@ -145,15 +162,10 @@ def place_order(payload: dict) -> dict:
                 "note": "Robinhood no está configurado (faltan RH_USERNAME/"
                         "RH_PASSWORD en API/.env). No se envió nada."}
 
-    # Regla de Angel: nunca arriesgar más de 3% de la cuenta de $1,000 ($30) por
-    # trade. El riesgo se dimensiona sobre $1,000 (o menos, si el poder de compra
-    # vivo es menor) — NUNCA sobre un balance mayor. El poder de compra solo capa
-    # el notional (no puedes comprar más de lo que tienes en efectivo).
-    buying_power = rh_provider.buying_power()
-    risk_base = min(PROFILE_CAPITAL, buying_power) if buying_power else PROFILE_CAPITAL
-    cap_notional = buying_power or PROFILE_CAPITAL
-    ticket = build_ticket(ticker, "buy", entry=entry, stop=stop,
-                          equity=risk_base, risk_frac=0.03, max_notional=cap_notional)
+    # Same sizing as the preview: risk 3% of $1,000 (or less if buying power is
+    # smaller), never more; buying power caps the notional. Read live so funding
+    # is reflected automatically.
+    ticket = _size_for_account(ticker, entry, stop, rh_provider.buying_power())
     if not ticket.tradeable:
         return {"ok": False, "status": "not_tradeable", "note": ticket.reason}
 
@@ -729,9 +741,10 @@ function orderHtml(d) {
   if (!o) return { show:false, html:'' };
   ORDER = { ticker:d.ticker, entry:o.entry, stop:o.stop };
   if (!o.tradeable) {
+    const basis = o.equity_basis ? `<div class="brief-note" style="margin-top:6px">Base de cuenta: ${o.equity_basis}. Fondea la cuenta y el tamaño aparecerá automáticamente.</div>` : '';
     return { show:true, html:`<h2>Entrar orden</h2>
       <div class="sub">Orden derivada del research — no ejecutable</div>
-      <div class="brief-note" style="margin-top:12px">No hay orden sugerida: ${o.reason || 'niveles insuficientes'}.</div>` };
+      <div class="brief-note" style="margin-top:12px">No hay orden por ahora: ${o.reason || 'niveles insuficientes.'}</div>${basis}` };
   }
   const cfg = d.rh_configured;
   const capBasis = o.equity_basis || '';
