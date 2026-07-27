@@ -1,0 +1,35 @@
+# systemd unit para The Great Gatsby (agente de ACCIONES) en el VPS, 24/7.
+#
+# Modo SOLO ANÁLISIS (WBJ_READONLY=1): sirve el análisis pero NO coloca órdenes
+# — el gatillo de dinero real nunca vive en un servidor de nube; las órdenes se
+# colocan solo desde la Mac. El .env del VPS NO lleva credenciales de Robinhood.
+#
+# Atado a la IP del TAILNET (no 0.0.0.0): accesible solo por la red privada de
+# Tailscale, nunca por el internet público (el VPS tiene IP pública).
+#
+# Instalación en el VPS (root):
+#   rsync del repo -> /root/gatsby ; venv en engine/.venv ; pip install -e .
+#   cp engine/deploy/gatsby.service /etc/systemd/system/gatsby.service
+#   (ajustar WBJ_HOST a la IP de `tailscale ip -4` del VPS)
+#   systemctl daemon-reload && systemctl enable --now gatsby
+#
+# Es el agente de acciones (puerto 8765). El forex es otro proyecto en
+# /root/forex-agent — no se mezclan.
+
+[Unit]
+Description=The Great Gatsby (acciones) - solo analisis 24/7 (tailnet)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/gatsby/engine
+Environment=WBJ_READONLY=1
+Environment=WBJ_HOST=100.105.244.125
+Environment=WBJ_PORT=8765
+ExecStart=/root/gatsby/engine/.venv/bin/python /root/gatsby/engine/scripts/webapp.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
