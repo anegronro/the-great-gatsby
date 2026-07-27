@@ -188,7 +188,7 @@ def place_order(payload: dict) -> dict:
 PAGE = """<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Warren Buffett Jr — Scorecard</title>
+<title>The Great Gatsby — Scorecard</title>
 <style>
   :root { color-scheme: light;
     --page:#edeff5; --card:#ffffff; --ink:#16181d; --ink2:#5b6270; --muted:#9aa1ad;
@@ -417,8 +417,8 @@ PAGE = """<!doctype html>
     font-variant-numeric:tabular-nums; font-weight:600; }
 </style></head><body><div class="app landing" id="app"><div class="wrap">
   <header class="hero">
-    <div class="kicker">Warren Buffett Jr · Motor de Análisis · SEC EDGAR en vivo</div>
-    <h1 id="brand">Bienvenido a Warren Buffett Jr</h1>
+    <div class="kicker">The Great Gatsby · Motor de Análisis · SEC EDGAR en vivo</div>
+    <h1 id="brand">Bienvenido a The Great Gatsby</h1>
     <p class="subtitle">Tu Especialista Financiero</p>
     <div class="topbar">
       <div class="searchbox">
@@ -456,7 +456,7 @@ function setMode(mode) {
   const landing = mode === 'landing';
   app.classList.toggle('landing', landing);
   app.classList.toggle('results', !landing);
-  brand.textContent = landing ? 'Bienvenido a Warren Buffett Jr' : 'Warren Buffett Jr';
+  brand.textContent = landing ? 'Bienvenido a The Great Gatsby' : 'The Great Gatsby';
 }
 
 // Clic en el título (en modo resultados) regresa a la bienvenida centrada.
