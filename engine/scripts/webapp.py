@@ -317,7 +317,7 @@ PAGE = """<!doctype html>
   .modal { font-size:14px; margin:8px 0 4px; }
   .modal b { color:var(--ink); }
   .levels { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:6px 0 10px; }
-  .lvl { background:var(--page); border-radius:12px; padding:12px 14px; }
+  .lvl { background:var(--page); border-radius:12px; padding:12px 14px; min-width:0; }
   .lvl.inval { background:var(--red-bg); }
   .lvl.salida { background:var(--green-bg); }
   .lvl .k { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink2); }
@@ -422,6 +422,15 @@ PAGE = """<!doctype html>
     .trow .tp { grid-area:price; align-self:center; }
     .trow .up { grid-area:up; align-self:center; }
     .trow .as { grid-area:as; }
+    /* Niveles de precio: caben 3 en fila sin desbordar (números más chicos). */
+    .levels { gap:8px; }
+    .lvl { padding:10px 10px; }
+    .lvl .k { font-size:10px; }
+    .lvl .v { font-size:15.5px; }
+    /* Encabezado de resultados: la marca en una fila, el buscador debajo a lo
+       ancho — antes empujaba la página a lo ancho (scroll horizontal). */
+    .app.results .hero { flex-wrap:wrap; gap:12px; }
+    .app.results .topbar { flex-basis:100%; }
   }
   .range { position:relative; height:54px; margin:18px 6px 2px; }
   .range .line { position:absolute; top:24px; left:0; right:0; height:8px;
