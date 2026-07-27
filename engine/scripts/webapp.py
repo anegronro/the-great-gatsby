@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -30,7 +31,11 @@ from wbj.order import build_ticket
 from wbj.providers.robinhood import OrderRefused, RobinhoodProvider
 from wbj.targets import live_price, narrative, price_history, price_targets
 
-PORT = 8765
+# Bind address/port. Default localhost-only; `WBJ_HOST` (p.ej. la IP de Tailscale)
+# lo abre al tailnet para el teléfono sin exponerlo al WiFi público. Ver
+# scripts/serve_tailnet.sh.
+HOST = os.environ.get("WBJ_HOST", "127.0.0.1")
+PORT = int(os.environ.get("WBJ_PORT", "8765"))
 _lock = threading.Lock()
 
 # Capital del perfil (Perfil Inversionista/Angel Negron.md) — se usa para el
@@ -1109,5 +1114,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print(f"WBJ web app -> http://localhost:{PORT}")
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    shown = "localhost" if HOST in ("127.0.0.1", "0.0.0.0") else HOST
+    print(f"The Great Gatsby -> http://{shown}:{PORT}")
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
