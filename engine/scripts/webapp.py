@@ -40,6 +40,8 @@ PORT = int(os.environ.get("WBJ_PORT", "8765"))
 # el despliegue del VPS (24/7) — el análisis sí, pero el gatillo de dinero real
 # NUNCA vive en un servidor de nube; las órdenes se colocan solo desde la Mac.
 READONLY = bool(os.environ.get("WBJ_READONLY"))
+# En modo readonly (VPS), a dónde ir para colocar órdenes reales (la Mac).
+ORDER_URL = os.environ.get("WBJ_ORDER_URL", "")
 _lock = threading.Lock()
 
 # Capital del perfil (Perfil Inversionista/Angel Negron.md) — se usa para el
@@ -154,6 +156,7 @@ def analyze(ticker: str) -> dict:
     result["order"] = _order_preview(ticker, result["brief"])
     result["rh_configured"] = rh_provider.available and not READONLY
     result["readonly"] = READONLY
+    result["order_url"] = ORDER_URL
     return result
 
 
@@ -857,8 +860,11 @@ function orderHtml(d) {
   const cfg = d.rh_configured;
   const ro = d.readonly;
   const capBasis = o.equity_basis || '';
+  const macLink = d.order_url
+    ? ` Para ordenar, abre <a href="${d.order_url}" style="color:#7a5f1e;font-weight:800;text-decoration:underline">la app en tu Mac</a> (con la Mac encendida).`
+    : '';
   const banner = ro
-    ? `<div class="rh-banner" style="background:var(--purple-bg);border-color:#e6d29a;color:#7a5f1e">📊 Modo solo análisis — la orden se envía desde la app en tu Mac, no desde aquí.</div>`
+    ? `<div class="rh-banner" style="background:var(--purple-bg);border-color:#e6d29a;color:#7a5f1e">📊 Modo solo análisis — esta dirección no coloca órdenes.${macLink}</div>`
     : `<div class="rh-banner">⚠ DINERO REAL — esta orden se manda a Robinhood cuando TÚ la confirmas. El agente no la dispara solo.</div>`;
   const send = ro
     ? `<button class="rh-send" disabled>Enviar solo desde la Mac</button>`
