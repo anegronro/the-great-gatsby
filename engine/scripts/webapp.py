@@ -411,6 +411,16 @@ PAGE = """<!doctype html>
   .trow .as { font-size:12px; color:var(--muted); line-height:1.45; }
   .trow .tp { font-size:19px; font-weight:800; text-align:right; font-variant-numeric:tabular-nums; }
   .trow .up { text-align:right; }
+  /* Móvil: la cuadrícula de 4 columnas fijas no cabe; los supuestos se
+     aplastaban. Reordenar a números arriba y supuestos a lo ancho debajo. */
+  @media (max-width:600px) {
+    .trow { grid-template-columns:auto 1fr auto;
+      grid-template-areas:"tag price up" "as as as"; gap:6px 10px; }
+    .trow .tag { grid-area:tag; align-self:center; padding:4px 14px; }
+    .trow .tp { grid-area:price; align-self:center; }
+    .trow .up { grid-area:up; align-self:center; }
+    .trow .as { grid-area:as; }
+  }
   .range { position:relative; height:54px; margin:18px 6px 2px; }
   .range .line { position:absolute; top:24px; left:0; right:0; height:8px;
     border-radius:6px; background:linear-gradient(90deg, var(--red-bg), var(--grid), var(--green-bg)); }
