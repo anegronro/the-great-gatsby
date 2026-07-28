@@ -13,6 +13,7 @@ import math
 import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from wbj.cli import _build_packet, _compute
@@ -243,10 +244,22 @@ def _emblem_svg(attrs: str = "") -> str:
 FAVICON_SVG = _emblem_svg()
 EMBLEM_INLINE = _emblem_svg('class="emblem"')
 
+# apple-touch-icon.png — iOS lo pide (PNG) al "Agregar a inicio"; el SVG no basta.
+# Es un asset estático pre-generado (engine/scripts/gen_app_icon.py) para no
+# depender de un rasterizador en runtime (ni en el VPS). Si falta, se sirve 404.
+_ICON_PATH = Path(__file__).resolve().parent / "assets" / "apple-touch-icon.png"
+APPLE_ICON = _ICON_PATH.read_bytes() if _ICON_PATH.exists() else b""
+
 
 PAGE = """<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<!-- iOS "Agregar a inicio" ignora el SVG: necesita este PNG. -->
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="Gatsby">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1C1710">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Great Gatsby — Scorecard</title>
 <style>
@@ -1118,6 +1131,16 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        elif url.path == "/apple-touch-icon.png":
+            if not APPLE_ICON:
+                self._json({"error": "not found"}, 404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(APPLE_ICON)))
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.end_headers()
+            self.wfile.write(APPLE_ICON)
         elif url.path == "/api/search":
             self._json(search(qs.get("q", [""])[0]))
         elif url.path == "/api/screen":
