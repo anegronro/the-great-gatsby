@@ -29,6 +29,9 @@ Environment=WBJ_HOST=100.105.244.125
 Environment=WBJ_PORT=8765
 # A dónde mandar al usuario para colocar órdenes reales (la Mac, con su sesión RH).
 Environment=WBJ_ORDER_URL=http://100.83.115.61:8765
+# Secretos que NO viven en el repo (p.ej. WBJ_BASIC_AUTH="usuario:clave" para el
+# acceso público via Funnel). El '-' hace el archivo opcional (si no existe, no falla).
+EnvironmentFile=-/etc/gatsby.env
 ExecStart=/root/gatsby/engine/.venv/bin/python /root/gatsby/engine/scripts/webapp.py
 Restart=always
 RestartSec=5

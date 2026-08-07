@@ -8,6 +8,8 @@ on the reference screenshots in Referencias/.
 
 from __future__ import annotations
 
+import base64
+import hmac
 import json
 import math
 import os
@@ -249,6 +251,12 @@ EMBLEM_INLINE = _emblem_svg('class="emblem"')
 # depender de un rasterizador en runtime (ni en el VPS). Si falta, se sirve 404.
 _ICON_PATH = Path(__file__).resolve().parent / "assets" / "apple-touch-icon.png"
 APPLE_ICON = _ICON_PATH.read_bytes() if _ICON_PATH.exists() else b""
+
+# Basic Auth OPCIONAL — para exponer el modo solo-análisis públicamente (Funnel)
+# sin dejarlo abierto. WBJ_BASIC_AUTH="usuario:clave". Si está vacío (uso privado
+# en la Mac/tailnet), NO se pide auth y todo se comporta igual que antes.
+_BA = os.environ.get("WBJ_BASIC_AUTH", "").strip()
+_EXPECTED_AUTH = ("Basic " + base64.b64encode(_BA.encode()).decode()) if ":" in _BA else ""
 
 
 PAGE = """<!doctype html>
@@ -1106,6 +1114,23 @@ PAGE = PAGE.replace("__EMBLEM__", EMBLEM_INLINE)
 
 
 class Handler(BaseHTTPRequestHandler):
+    def _authed(self) -> bool:
+        """True si no hay auth configurada o si las credenciales coinciden.
+        Si hay auth y no coinciden, responde 401 y devuelve False."""
+        if not _EXPECTED_AUTH:
+            return True
+        got = self.headers.get("Authorization", "")
+        if got and hmac.compare_digest(got, _EXPECTED_AUTH):
+            return True
+        body = b"Auth requerida."
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="The Great Gatsby"')
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        return False
+
     def _json(self, obj: dict | list, code: int = 200) -> None:
         body = json.dumps(obj).encode()
         self.send_response(code)
@@ -1115,6 +1140,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self) -> None:  # noqa: N802 (stdlib API)
+        if not self._authed():
+            return
         url = urlparse(self.path)
         qs = parse_qs(url.query)
         if url.path == "/":
@@ -1165,6 +1192,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": "not found"}, 404)
 
     def do_POST(self) -> None:  # noqa: N802 (stdlib API)
+        if not self._authed():
+            return
         url = urlparse(self.path)
         if url.path != "/api/order/place":
             self._json({"error": "not found"}, 404)
