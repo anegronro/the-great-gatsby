@@ -341,3 +341,158 @@ def test_umbral_decide_hilo_vs_recorte():
 
     assert (290 - MAX_CHARS) <= UMBRAL_HILO      # 10 de exceso -> recorte
     assert (400 - MAX_CHARS) > UMBRAL_HILO       # 120 de exceso -> hilo
+
+
+# --- Telegram -------------------------------------------------------------
+
+class FakeBot:
+    """Bot de mentira que registra lo que se le pide."""
+
+    def __init__(self, updates=None):
+        self.enviados, self.callbacks, self.editados = [], [], []
+        self._updates = updates or []
+        self._next_id = 100
+
+    def send(self, texto, *, botones=None, force_reply=False):
+        self._next_id += 1
+        self.enviados.append({"texto": texto, "botones": botones,
+                              "force_reply": force_reply, "id": self._next_id})
+        return {"message_id": self._next_id}
+
+    def answer_callback(self, callback_id, texto=""):
+        self.callbacks.append((callback_id, texto))
+
+    def quitar_botones(self, message_id, nuevo_texto=None):
+        self.editados.append((message_id, nuevo_texto))
+
+    def updates(self, offset=None):
+        return [u for u in self._updates
+                if offset is None or u["update_id"] >= offset]
+
+
+def _cb(item_id, accion, update_id=1, message_id=101):
+    return {"update_id": update_id,
+            "callback_query": {"id": f"c{update_id}", "data": f"{accion}:{item_id}",
+                               "message": {"message_id": message_id}}}
+
+
+def _estado(tmp_path):
+    from wbj.x.telegram import Estado
+
+    return Estado(tmp_path / "estado.json")
+
+
+def test_enviar_pendientes_no_reenvia(tmp_path):
+    q = Queue(tmp_path / "cola.jsonl")
+    q.add(_draft("uno"))
+    q.add(_draft("dos"))
+    bot = FakeBot()
+    from wbj.x.telegram import enviar_pendientes
+
+    assert enviar_pendientes(q, bot) == 2
+    assert enviar_pendientes(q, bot) == 0   # ya están en el teléfono
+    assert len(bot.enviados) == 2
+    assert bot.enviados[0]["botones"]       # llevan los tres botones
+
+
+def test_boton_aprobar(tmp_path):
+    from wbj.x.telegram import procesar_updates
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("texto"))
+    bot = FakeBot([_cb(i.id, "ok")])
+    procesar_updates(q, bot, _estado(tmp_path))
+    assert q.get(i.id).estado == "aprobado"
+    assert bot.callbacks  # sin answerCallbackQuery el botón se queda girando
+
+
+def test_boton_descartar_no_borra(tmp_path):
+    from wbj.x.telegram import procesar_updates
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("texto"))
+    procesar_updates(q, FakeBot([_cb(i.id, "no")]), _estado(tmp_path))
+    item = q.get(i.id)
+    assert item.estado == "rechazado"
+    assert item.motivo_rechazo
+    assert len(q.load()) == 1
+
+
+def test_editar_pide_texto_y_luego_aprueba(tmp_path):
+    from wbj.x.telegram import procesar_updates
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("original"))
+    est = _estado(tmp_path)
+
+    bot = FakeBot([_cb(i.id, "ed")])
+    procesar_updates(q, bot, est)
+    assert bot.enviados[-1]["force_reply"]
+    assert q.get(i.id).estado == "pendiente"      # todavía no se decide
+    pedido_id = bot.enviados[-1]["id"]
+
+    bot2 = FakeBot([{
+        "update_id": 2,
+        "message": {"message_id": 500, "text": "versión corregida",
+                    "reply_to_message": {"message_id": pedido_id}},
+    }])
+    procesar_updates(q, bot2, est)
+    item = q.get(i.id)
+    assert item.estado == "aprobado"
+    assert item.texto_final == "versión corregida"
+
+
+def test_offset_evita_reprocesar(tmp_path):
+    from wbj.x.telegram import procesar_updates
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("texto"))
+    est = _estado(tmp_path)
+    ups = [_cb(i.id, "ok", update_id=7)]
+    assert procesar_updates(q, FakeBot(ups), est) != []
+    # Segunda pasada con los MISMOS updates: el offset ya avanzó.
+    assert procesar_updates(q, FakeBot(ups), est) == []
+
+
+def test_callback_de_item_inexistente_no_revienta(tmp_path):
+    from wbj.x.telegram import procesar_updates
+
+    q = Queue(tmp_path / "cola.jsonl")
+    bot = FakeBot([_cb("noexiste", "ok")])
+    assert procesar_updates(q, bot, _estado(tmp_path)) == []
+    assert bot.callbacks
+
+
+def test_sin_token_falla_sin_caer_en_el_bot_de_forex(tmp_path):
+    """El fallback silencioso mandaría posts de acciones al chat de forex."""
+    from wbj.x.telegram import TelegramError, bot_desde
+
+    s = SimpleNamespace(telegram_x_bot_token=None, telegram_x_chat_id="123")
+    with pytest.raises(TelegramError, match="TELEGRAM_X_BOT_TOKEN"):
+        bot_desde(s)
+
+
+def test_sin_chat_id_falla_claro():
+    from wbj.x.telegram import TelegramError, bot_desde
+
+    s = SimpleNamespace(telegram_x_bot_token="t", telegram_x_chat_id=None)
+    with pytest.raises(TelegramError, match="TELEGRAM_X_CHAT_ID"):
+        bot_desde(s)
+
+
+def test_mensaje_avisa_de_cifras_sin_fuente(tmp_path):
+    from wbj.x.telegram import _texto_item
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("texto", numeros_no_justificados=["$412"]))
+    assert "CIFRAS SIN FUENTE" in _texto_item(q.get(i.id))
+
+
+def test_mensaje_numera_el_hilo(tmp_path):
+    from wbj.x.telegram import _texto_item
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("primero", thread=["segundo"]))
+    texto = _texto_item(q.get(i.id))
+    assert "1/ primero" in texto and "2/ segundo" in texto
+    assert "hilo de 2" in texto

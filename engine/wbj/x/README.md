@@ -82,10 +82,36 @@ largo. Está en 16000, y además se detecta el truncamiento por dos vías:
 `stop_reason == "max_tokens"` y un texto que no termina en puntuación de
 cierre. No bajar `max_tokens` sin volver a medir esto.
 
+## Cola por Telegram
+
+Bot **propio**, distinto al de forex. No hay fallback a `TELEGRAM_BOT_TOKEN`
+a propósito: un fallback silencioso mandaría posts de acciones al chat de
+trading.
+
+```bash
+# Una sola vez: crea el bot con @BotFather (/newbot), pega el token y
+# escríbele /start. Luego:
+wbj x telegram setup      # verifica el bot y descubre tu chat_id
+
+wbj x telegram enviar     # manda los pendientes con botones
+wbj x telegram escuchar   # aplica los botones que tocaste
+wbj x telegram ciclo      # las dos cosas — esto es lo que va en el cron
+```
+
+Long-polling con offset persistido, sin webhook ni proceso permanente, para
+que corra por cron como el resto de la infra:
+
+```cron
+*/3 * * * * cd ~/Proyectos/warren-buffett-jr/engine && ./.venv/bin/python -m wbj.cli x telegram ciclo >> /tmp/wbj-x-tg.log 2>&1
+```
+
+Botones: ✅ aprobar, ❌ descartar, ✏️ editar. Editar manda un `force_reply`;
+tu respuesta se guarda como texto editado **y aprueba** — si te tomaste el
+trabajo de reescribirlo, lo quieres publicado. El mensaje avisa en el
+teléfono si el borrador trae cifras sin fuente o texto cortado.
+
 ## Lo que falta
 
 - Publicador contra la API de X (créditos + OAuth).
-- Cola de aprobación por Telegram con botones (el `.env` ya trae
-  `TELEGRAM_BOT_TOKEN`).
 - Cosecha de engagement real por post publicado, para cerrar el bucle
   predicción -> resultado como hace `wbj track` con los precios.
