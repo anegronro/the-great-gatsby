@@ -19,3 +19,6 @@ Reportes/*
 Memoria/tesis/*
 !Memoria/tesis/.gitkeep
 Memoria/calibracion.md
+
+# Cola de borradores de X (contenido de trabajo, no código)
+Contenido/
