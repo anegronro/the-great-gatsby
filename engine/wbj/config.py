@@ -73,12 +73,6 @@ class Settings:
     # pones en API/.env; el motor solo las lee. Sin ellas el proveedor queda
     # deshabilitado. El MFA es el secreto TOTP de tu 2FA por app (base32), del
     # que robin_stocks genera el código en cada login. Ver providers/robinhood.py.
-    # Bot de Telegram de la cola de X. DELIBERADAMENTE separado del bot de
-    # forex (Koenig & Bauer): son agentes distintos y mezclarlos manda un post
-    # de acciones al chat de trading. El token NO cae por defecto en
-    # TELEGRAM_BOT_TOKEN — si falta, se falla ruidosamente.
-    telegram_x_bot_token: str | None = None
-    telegram_x_chat_id: str | None = None
     rh_username: str | None = None
     rh_password: str | None = None
     rh_mfa_totp: str | None = None
@@ -133,11 +127,6 @@ def load_settings(env_file: Path | None = None) -> Settings:
         or None
     )
     judge_model = env_vars.get("JUDGE_MODEL") or "claude-opus-4-8"
-    telegram_x_bot_token = _secret("TELEGRAM_X_BOT_TOKEN", env_vars)
-    # El chat_id sí puede reusarse: identifica TU chat, no al bot.
-    telegram_x_chat_id = (
-        env_vars.get("TELEGRAM_X_CHAT_ID") or env_vars.get("TELEGRAM_CHAT_ID") or None
-    )
     rh_username = env_vars.get("RH_USERNAME") or None
     # Contraseña y semilla TOTP: pueden vivir en el Llavero en vez del .env.
     rh_password = _secret("RH_PASSWORD", env_vars)
@@ -150,8 +139,6 @@ def load_settings(env_file: Path | None = None) -> Settings:
         anthropic_api_key=anthropic_api_key,
         anthropic_workspace_id=anthropic_workspace_id,
         judge_model=judge_model,
-        telegram_x_bot_token=telegram_x_bot_token,
-        telegram_x_chat_id=telegram_x_chat_id,
         rh_username=rh_username,
         rh_password=rh_password,
         rh_mfa_totp=rh_mfa_totp,

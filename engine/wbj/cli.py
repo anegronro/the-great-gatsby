@@ -24,11 +24,6 @@ from wbj.quick import quick_scorecard
 
 app = typer.Typer()
 
-# Content engine para la cuenta de X (wbj x ...).
-from wbj.x.cli import app as _x_app  # noqa: E402
-
-app.add_typer(_x_app, name="x")
-
 # Concept tags to try, in preference order, per us-gaap taxonomy drift.
 _REVENUE_TAGS = [
     "RevenueFromContractWithCustomerExcludingAssessedTax",
