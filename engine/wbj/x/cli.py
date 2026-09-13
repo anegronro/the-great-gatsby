@@ -190,3 +190,105 @@ def rechazar(item_id: str, motivo: str = typer.Option("", help="Por qué.")) -> 
         typer.secho(f"No existe {item_id}", fg="red", err=True)
         raise typer.Exit(1)
     typer.secho(f"{item_id} rechazado.", fg="yellow")
+
+
+# --- Telegram -------------------------------------------------------------
+
+tg = typer.Typer(help="Cola de aprobación por Telegram (bot propio de X).")
+app.add_typer(tg, name="telegram")
+
+
+def _bot():
+    from wbj.x.telegram import Estado, TelegramError, bot_desde
+
+    q, s = _queue()
+    try:
+        b = bot_desde(s)
+    except TelegramError as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+    return q, s, b, Estado(s.repo_root / "Contenido" / "telegram_estado.json")
+
+
+@tg.command("setup")
+def tg_setup() -> None:
+    """Verifica el bot y descubre tu chat_id (escríbele algo primero)."""
+    from wbj.x.telegram import Bot, TelegramError
+
+    _, s = _queue()
+    if not s.telegram_x_bot_token:
+        typer.secho(
+            "Falta TELEGRAM_X_BOT_TOKEN en API/.env.\n"
+            "  1. Abre @BotFather en Telegram y manda /newbot\n"
+            "  2. Ponle un nombre (uno DISTINTO al bot de forex)\n"
+            "  3. Pega el token:  echo 'TELEGRAM_X_BOT_TOKEN=...' >> API/.env\n"
+            "  4. Escríbele /start a tu bot nuevo y corre esto otra vez",
+            fg="red", err=True)
+        raise typer.Exit(1)
+
+    b = Bot(s.telegram_x_bot_token, str(s.telegram_x_chat_id or ""))
+    try:
+        yo = b.me()
+    except TelegramError as e:
+        typer.secho(f"El token no sirve: {e}", fg="red", err=True)
+        raise typer.Exit(1)
+    typer.secho(f"Bot OK: @{yo.get('username')} ({yo.get('first_name')})", fg="green")
+
+    chats = {}
+    for up in b.updates():
+        ch = (up.get("message") or up.get("callback_query", {}).get("message") or {}).get("chat")
+        if ch:
+            chats[str(ch["id"])] = ch.get("username") or ch.get("first_name") or "?"
+    if not chats:
+        typer.secho("No veo mensajes todavía. Escríbele /start al bot y repite.",
+                    fg="yellow")
+        raise typer.Exit(1)
+    for cid, quien in chats.items():
+        typer.echo(f"  chat_id {cid}  ({quien})")
+    if not s.telegram_x_chat_id:
+        typer.echo("\nAñádelo:  echo 'TELEGRAM_X_CHAT_ID=<el de arriba>' >> API/.env")
+    elif str(s.telegram_x_chat_id) in chats:
+        typer.secho(f"\nchat_id configurado ({s.telegram_x_chat_id}) — coincide.",
+                    fg="green")
+    else:
+        typer.secho(f"\nOJO: tienes configurado {s.telegram_x_chat_id}, que no "
+                    f"aparece arriba. Puede ser el chat del bot de forex.",
+                    fg="yellow")
+
+
+@tg.command("enviar")
+def tg_enviar(limite: int = typer.Option(10, help="Máximo de borradores.")) -> None:
+    """Manda a tu teléfono los pendientes que aún no se enviaron."""
+    from wbj.x.telegram import TelegramError, enviar_pendientes
+
+    q, _, b, _e = _bot()
+    try:
+        n = enviar_pendientes(q, b, limite=limite)
+    except TelegramError as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+    typer.secho(f"{n} borrador(es) enviados." if n else
+                "Nada nuevo que enviar.", fg="green" if n else None)
+
+
+@tg.command("escuchar")
+def tg_escuchar() -> None:
+    """Aplica los botones que tocaste. Pensado para cron cada pocos minutos."""
+    from wbj.x.telegram import TelegramError, procesar_updates
+
+    q, _, b, est = _bot()
+    try:
+        log = procesar_updates(q, b, est)
+    except TelegramError as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+    for linea in log:
+        typer.echo(linea)
+    typer.echo(f"{len(log)} acción(es) aplicadas." if log else "Sin novedades.")
+
+
+@tg.command("ciclo")
+def tg_ciclo() -> None:
+    """escuchar + enviar en una pasada. Es lo que va en el cron."""
+    tg_escuchar()
+    tg_enviar()
