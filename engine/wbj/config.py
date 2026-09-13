@@ -62,6 +62,10 @@ class Settings:
     finnhub_api_key: str | None = None
     fred_api_key: str | None = None
     anthropic_api_key: str | None = None
+    # Solo hace falta si la clave es de organización y no está asignada a un
+    # workspace: en ese caso la API exige el header `anthropic-workspace-id`.
+    # Una clave creada DENTRO de un workspace no lo necesita.
+    anthropic_workspace_id: str | None = None
     # Model for the qualitative judgment agent; override to cut cost (e.g.
     # "claude-haiku-4-5"). Default per the Anthropic SDK guidance.
     judge_model: str = "claude-opus-4-8"
@@ -117,6 +121,11 @@ def load_settings(env_file: Path | None = None) -> Settings:
     anthropic_api_key = (
         env_vars.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY") or None
     )
+    anthropic_workspace_id = (
+        env_vars.get("ANTHROPIC_WORKSPACE_ID")
+        or os.environ.get("ANTHROPIC_WORKSPACE_ID")
+        or None
+    )
     judge_model = env_vars.get("JUDGE_MODEL") or "claude-opus-4-8"
     rh_username = env_vars.get("RH_USERNAME") or None
     # Contraseña y semilla TOTP: pueden vivir en el Llavero en vez del .env.
@@ -128,6 +137,7 @@ def load_settings(env_file: Path | None = None) -> Settings:
         finnhub_api_key=finnhub_api_key,
         fred_api_key=fred_api_key,
         anthropic_api_key=anthropic_api_key,
+        anthropic_workspace_id=anthropic_workspace_id,
         judge_model=judge_model,
         rh_username=rh_username,
         rh_password=rh_password,
@@ -135,4 +145,27 @@ def load_settings(env_file: Path | None = None) -> Settings:
         repo_root=repo_root,
         cache_dir=repo_root / "engine" / "cache",
         reports_dir=repo_root / "Reportes",
+    )
+
+
+def anthropic_client(settings: Settings):
+    """Cliente de Anthropic listo, o None si no se puede construir.
+
+    Centraliza el header de workspace: una clave de organización que no está
+    asignada a un workspace recibe un 400 pidiendo `anthropic-workspace-id`.
+    Devuelve None (sin reventar) cuando falta la clave o el SDK.
+    """
+    if not settings.anthropic_api_key:
+        return None
+    try:
+        import anthropic
+    except ImportError:
+        return None
+    headers = (
+        {"anthropic-workspace-id": settings.anthropic_workspace_id}
+        if settings.anthropic_workspace_id
+        else None
+    )
+    return anthropic.Anthropic(
+        api_key=settings.anthropic_api_key, default_headers=headers
     )

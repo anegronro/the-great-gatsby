@@ -142,13 +142,11 @@ def answer_judgments(
     if not requests:
         return []
     if client is None:
-        if not settings.anthropic_api_key:
+        from wbj.config import anthropic_client
+
+        client = anthropic_client(settings)
+        if client is None:
             return []
-        try:
-            import anthropic
-        except ImportError:
-            return []
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
     ctx = _company_context(packet)
     q_lines = [
