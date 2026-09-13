@@ -35,6 +35,7 @@ class Item:
     brief_id: str = ""
     model: str = ""
     numeros_no_justificados: list[str] = field(default_factory=list)
+    truncado: bool = False
     # Se llenan al decidir / publicar / cosechar.
     texto_editado: str = ""
     decidido: str = ""
@@ -98,6 +99,7 @@ class Queue:
             brief_id=draft.brief_id,
             model=draft.model,
             numeros_no_justificados=list(draft.numeros_no_justificados),
+            truncado=getattr(draft, "truncado", False),
         )
         items = self.load()
         items.append(item)

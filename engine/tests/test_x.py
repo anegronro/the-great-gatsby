@@ -281,3 +281,29 @@ def test_draft_que_excede_no_es_valido():
 
 def test_draft_limpio_es_valido():
     assert _draft().valido
+
+
+# --- truncamiento ---------------------------------------------------------
+
+@pytest.mark.parametrize("texto,cortado", [
+    ("A complete thought.", False),
+    ("Is this the question?", False),
+    ("Loud claim!", False),
+    ('He said "no more"', False),                 # cierre con comilla
+    ("the bear, what a 45.10 P/E costs you", True),   # el caso real que pasó
+    ("Base still needs another", True),
+])
+def test_detecta_frase_cortada(texto, cortado):
+    from wbj.x.generate import _parece_cortado
+
+    assert _parece_cortado(texto) is cortado
+
+
+def test_draft_truncado_no_es_valido():
+    assert not _draft("sin cierre", truncado=True).valido
+
+
+def test_cola_persiste_el_flag_de_truncado(tmp_path):
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("cortado a medias", truncado=True))
+    assert q.get(i.id).truncado is True

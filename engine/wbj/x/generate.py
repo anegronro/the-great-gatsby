@@ -124,6 +124,17 @@ class _Variants(BaseModel):
     variants: list[_Variant]
 
 
+# Cierres legítimos de un post. Un texto que no termina en ninguno de estos
+# casi siempre viene cortado.
+_CIERRES = ".!?\"')]}…"
+
+
+def _parece_cortado(texto: str) -> bool:
+    """True si el texto parece interrumpido a media frase."""
+    t = texto.rstrip()
+    return bool(t) and t[-1] not in _CIERRES
+
+
 @dataclass
 class Draft:
     """Un borrador listo para revisión, con su auditoría."""
@@ -138,10 +149,15 @@ class Draft:
     model: str = MODEL
     numeros_no_justificados: list[str] = field(default_factory=list)
     exceso_caracteres: int = 0
+    truncado: bool = False
 
     @property
     def valido(self) -> bool:
-        return not self.numeros_no_justificados and self.exceso_caracteres == 0
+        return (
+            not self.numeros_no_justificados
+            and self.exceso_caracteres == 0
+            and not self.truncado
+        )
 
     @property
     def full_text(self) -> str:
@@ -248,7 +264,10 @@ def draft_posts(
 
     resp = client.messages.parse(
         model=model or MODEL,
-        max_tokens=8000,
+        # En Opus 5 el thinking adaptativo está ON por defecto y sus tokens
+        # cuentan contra este techo: con 8000 la última variante salía cortada
+        # a media frase. No bajar sin volver a medir.
+        max_tokens=16000,
         system=_SYSTEM,
         messages=[{"role": "user", "content": user}],
         output_format=_Variants,
@@ -256,6 +275,8 @@ def draft_posts(
     parsed = resp.parsed_output
     if parsed is None:
         return []
+    # Si la respuesta chocó con el techo, lo último que venga está cortado.
+    respuesta_truncada = getattr(resp, "stop_reason", None) == "max_tokens"
 
     allowed = brief.allowed_numbers()
     drafts: list[Draft] = []
@@ -280,6 +301,7 @@ def draft_posts(
                 model=model or MODEL,
                 numeros_no_justificados=validate_numbers("\n".join(piezas), allowed),
                 exceso_caracteres=exceso,
+                truncado=respuesta_truncada or _parece_cortado(v.text),
             )
         )
     return drafts

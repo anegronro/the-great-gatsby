@@ -144,6 +144,8 @@ def redactar(
                         fg="red")
         if d.exceso_caracteres:
             typer.secho(f"  se pasa por {d.exceso_caracteres} caracteres", fg="red")
+        if d.truncado:
+            typer.secho("  TEXTO CORTADO a media frase — no publicar así", fg="red")
         if encolar:
             item = q.add(d)
             typer.echo(f"  -> cola id {item.id}")
