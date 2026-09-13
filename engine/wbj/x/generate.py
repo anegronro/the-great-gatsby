@@ -181,6 +181,41 @@ def _style_rules(lecciones: list[Any]) -> str:
     return "\n".join(out)
 
 
+_SHRINK = """This post is {exceso} characters over the {limite}-character limit \
+({actual} total). Rewrite it under the limit.
+
+Hard constraints:
+- Keep every number exactly as written. Do not drop, round, or reword a figure.
+- Keep the position and the closing hook. Cut hedging, filler and connectives \
+before you cut substance.
+- Return only the rewritten post, nothing else.
+
+POST:
+{texto}"""
+
+
+def _shrink(client, texto: str, model: str) -> str:
+    """Pide una versión bajo el límite. Devuelve el original si no mejora.
+
+    Un modelo no puede contar caracteres de forma fiable — es un artefacto de
+    la tokenización, no algo que el prompt arregle. Así que el límite se
+    verifica en código y el recorte se pide solo cuando hace falta; si la
+    respuesta tampoco cabe, se devuelve el original y el borrador queda
+    marcado para que lo edite un humano.
+    """
+    try:
+        r = client.messages.create(
+            model=model, max_tokens=1000,
+            messages=[{"role": "user", "content": _SHRINK.format(
+                exceso=len(texto) - MAX_CHARS, limite=MAX_CHARS,
+                actual=len(texto), texto=texto)}],
+        )
+    except Exception:
+        return texto
+    nuevo = "".join(b.text for b in r.content if b.type == "text").strip()
+    return nuevo if 0 < len(nuevo) <= MAX_CHARS else texto
+
+
 def draft_posts(
     brief: Brief,
     settings,
@@ -226,6 +261,12 @@ def draft_posts(
     drafts: list[Draft] = []
     for v in parsed.variants:
         piezas = [v.text, *v.thread]
+        # El límite se hace cumplir aquí, no en el prompt.
+        piezas = [
+            _shrink(client, p, model or MODEL) if len(p) > MAX_CHARS else p
+            for p in piezas
+        ]
+        v.text, v.thread = piezas[0], piezas[1:]
         exceso = sum(max(0, len(p) - MAX_CHARS) for p in piezas)
         drafts.append(
             Draft(
