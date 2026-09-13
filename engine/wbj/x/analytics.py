@@ -252,14 +252,13 @@ class Finding:
     p_value: float | None
     suficiente: bool
     metric: str = "reply_rate"
+    # Lo pone `_benjamini_hochberg` sobre el conjunto completo de findings:
+    # un p-value aislado no basta cuando se corren 8 tests a la vez.
+    pasa_correccion: bool = False
 
     @property
     def significativo(self) -> bool:
-        return (
-            self.suficiente
-            and self.p_value is not None
-            and self.p_value < ALPHA
-        )
+        return self.suficiente and self.pasa_correccion
 
     @property
     def veredicto(self) -> str:
@@ -267,10 +266,40 @@ class Finding:
             return f"INSUFICIENTE (n={self.n_con}/{self.n_sin}, mínimo {MIN_GROUP})"
         if self.p_value is None:
             return "SIN TEST"
-        if self.p_value >= ALPHA:
+        if not self.pasa_correccion:
+            if self.p_value < ALPHA:
+                # El caso traicionero: p<0.05 aislado, pero con 8 tests
+                # simultáneos un falso positivo así es lo ESPERADO.
+                return (f"descartado por comparaciones múltiples "
+                        f"(p={self.p_value:.3f}, no sobrevive Benjamini-Hochberg)")
             return f"no distinguible del ruido (p={self.p_value:.2f})"
         direccion = "SUBE" if (self.lift or 0) > 0 else "BAJA"
         return f"{direccion} {abs(self.lift or 0):.0%} (p={self.p_value:.3f})"
+
+
+def _benjamini_hochberg(findings: list["Finding"], alpha: float = ALPHA) -> None:
+    """Marca `pasa_correccion` controlando la tasa de falsos descubrimientos.
+
+    Se prueban ~8 features a la vez. A alpha=0.05, uno de cada veinte tests
+    da un "hallazgo" que es puro azar — con 8 tests, encontrar un falso
+    positivo es lo esperado, no la excepción. Sin esta corrección el
+    generador convertiría ese ruido en una regla de estilo y escribiría
+    peor con cada análisis.
+
+    Benjamini-Hochberg en vez de Bonferroni: con muestras chicas Bonferroni
+    es tan conservador que borra también los efectos reales.
+    """
+    testeados = [f for f in findings if f.suficiente and f.p_value is not None]
+    m = len(testeados)
+    if m == 0:
+        return
+    ordenados = sorted(testeados, key=lambda f: f.p_value)
+    corte = 0  # el mayor k cuyo p_k <= (k/m)*alpha
+    for k, f in enumerate(ordenados, start=1):
+        if f.p_value <= (k / m) * alpha:
+            corte = k
+    for k, f in enumerate(ordenados, start=1):
+        f.pasa_correccion = k <= corte
 
 
 def _mannwhitney(a: list[float], b: list[float]) -> float | None:
@@ -356,6 +385,7 @@ def analyze(posts: list[Post], *, metric: str = "reply_rate") -> Report:
     if usables:
         for name in features(usables[0]):
             findings.append(analyze_feature(usables, name, metric))
+    _benjamini_hochberg(findings)
     # Primero lo accionable: significativo y de mayor efecto.
     findings.sort(
         key=lambda f: (f.significativo, abs(f.lift or 0)), reverse=True
