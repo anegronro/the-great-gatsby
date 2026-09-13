@@ -210,6 +210,44 @@ POST:
 {texto}"""
 
 
+# Por debajo de este exceso, partir en hilo deja una cola ridícula ("...and
+# that's the risk." como tweet 2). Se recorta. Por encima, hay sustancia
+# suficiente para un segundo post que se sostenga solo.
+UMBRAL_HILO = 40
+
+
+def _frases(texto: str) -> list[str]:
+    """Parte por final de frase, conservando el signo de puntuación.
+
+    Nunca parte a media palabra ni dentro de una cifra: los límites son
+    `.`, `!` o `?` seguidos de espacio, y un decimal como 45.10 no califica
+    porque le sigue un dígito.
+    """
+    partes = re.split(r"(?<=[.!?])\s+", texto.strip())
+    return [p for p in partes if p]
+
+
+def _to_thread(texto: str) -> list[str]:
+    """Reparte el texto en posts de <= MAX_CHARS por frases completas.
+
+    Si una sola frase excede el límite, se devuelve tal cual en su propia
+    pieza: partirla sería mutilarla, y el llamador ya la marca para recorte.
+    """
+    piezas: list[str] = []
+    actual = ""
+    for f in _frases(texto):
+        candidato = f if not actual else f"{actual} {f}"
+        if len(candidato) <= MAX_CHARS:
+            actual = candidato
+        else:
+            if actual:
+                piezas.append(actual)
+            actual = f
+    if actual:
+        piezas.append(actual)
+    return piezas or [texto]
+
+
 def _shrink(client, texto: str, model: str) -> str:
     """Pide una versión bajo el límite. Devuelve el original si no mejora.
 
@@ -282,11 +320,20 @@ def draft_posts(
     drafts: list[Draft] = []
     for v in parsed.variants:
         piezas = [v.text, *v.thread]
-        # El límite se hace cumplir aquí, no en el prompt.
-        piezas = [
-            _shrink(client, p, model or MODEL) if len(p) > MAX_CHARS else p
-            for p in piezas
-        ]
+        # El límite se hace cumplir aquí, no en el prompt: un modelo no
+        # cuenta caracteres de forma fiable.
+        ajustadas: list[str] = []
+        for pieza in piezas:
+            if len(pieza) <= MAX_CHARS:
+                ajustadas.append(pieza)
+            elif len(pieza) - MAX_CHARS > UMBRAL_HILO:
+                # Hay sustancia de sobra: se parte en hilo y no se pierde nada.
+                ajustadas.extend(_to_thread(pieza))
+            else:
+                # Se pasa por poco: recortar deja mejor post que un hilo con
+                # una cola de tres palabras.
+                ajustadas.append(_shrink(client, pieza, model or MODEL))
+        piezas = ajustadas
         v.text, v.thread = piezas[0], piezas[1:]
         exceso = sum(max(0, len(p) - MAX_CHARS) for p in piezas)
         drafts.append(

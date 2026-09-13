@@ -61,6 +61,27 @@ wbj x rechazar <id> --motivo "cifra sin fuente"
   es el criterio para pasar de revisión manual a auto-publicación
   (>=80% sobre >=20 decididos).
 
+## Límite de caracteres: hilo o recorte
+
+Un modelo no cuenta caracteres de forma fiable (es la tokenización, no el
+prompt), así que el límite de 280 se hace cumplir en código, nunca pidiéndolo:
+
+- **Exceso > 40 caracteres** → se parte en hilo por frases completas. No se
+  pierde sustancia ni se corta a media palabra, y el regex de corte ignora
+  los decimales (`45.10` no es un final de frase).
+- **Exceso <= 40** → se pide una versión más corta al modelo, conservando
+  todas las cifras. Partir por seis caracteres dejaría un segundo tweet de
+  tres palabras.
+- Si el recorte tampoco cabe, se conserva el original y el borrador queda
+  marcado `REVISAR`. Nunca se publica algo mutilado en silencio.
+
+**Gotcha de Opus 5**: el thinking adaptativo está ON por defecto y sus tokens
+cuentan contra `max_tokens`. Con 8000 la última variante salía **cortada a
+media frase** y pasaba como válida, porque el validador solo miraba cifras y
+largo. Está en 16000, y además se detecta el truncamiento por dos vías:
+`stop_reason == "max_tokens"` y un texto que no termina en puntuación de
+cierre. No bajar `max_tokens` sin volver a medir esto.
+
 ## Lo que falta
 
 - Publicador contra la API de X (créditos + OAuth).

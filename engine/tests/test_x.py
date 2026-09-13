@@ -307,3 +307,37 @@ def test_cola_persiste_el_flag_de_truncado(tmp_path):
     q = Queue(tmp_path / "cola.jsonl")
     i = q.add(_draft("cortado a medias", truncado=True))
     assert q.get(i.id).truncado is True
+
+
+# --- hilos automáticos ----------------------------------------------------
+
+def test_hilo_parte_por_frases_completas():
+    from wbj.x.generate import MAX_CHARS, _to_thread
+
+    texto = " ".join(f"Sentence number {i} says something." for i in range(30))
+    piezas = _to_thread(texto)
+    assert len(piezas) > 1
+    assert all(len(p) <= MAX_CHARS for p in piezas)
+    # Nada se pierde y nada se parte a media palabra.
+    assert " ".join(piezas) == texto
+
+
+def test_hilo_no_parte_dentro_de_un_decimal():
+    from wbj.x.generate import _frases
+
+    assert _frases("Trading at a 45.10 P/E today.") == ["Trading at a 45.10 P/E today."]
+
+
+def test_frase_unica_gigante_no_se_mutila():
+    from wbj.x.generate import _to_thread
+
+    larga = "x" * 400
+    assert _to_thread(larga) == [larga]  # el llamador la marca para recorte
+
+
+def test_umbral_decide_hilo_vs_recorte():
+    """Pasarse por poco se recorta; pasarse por mucho va a hilo."""
+    from wbj.x.generate import MAX_CHARS, UMBRAL_HILO
+
+    assert (290 - MAX_CHARS) <= UMBRAL_HILO      # 10 de exceso -> recorte
+    assert (400 - MAX_CHARS) > UMBRAL_HILO       # 120 de exceso -> hilo
