@@ -393,6 +393,74 @@ def track() -> None:
     typer.echo(f"\nReporte escrito en {memoria_dir / 'calibracion.md'}")
 
 
+@app.command("analyze-batch")
+def analyze_batch(
+    sector: str = typer.Option("", help="Solo este sector del universo."),
+    limite: int = typer.Option(0, help="Máximo de tickers (0 = todos)."),
+    rehacer: bool = typer.Option(False, help="Rehacer los ya analizados hoy."),
+) -> None:
+    """Analiza el universo completo en lote, reanudable.
+
+    Pensado para correr desatendido: un ticker que falla (sin filings, sin
+    datos de FMP, red caída) se salta y queda anotado, nunca tumba el lote.
+    Y lo ya analizado hoy se omite, así que relanzarlo tras un corte continúa
+    donde iba en vez de repetir media hora de llamadas.
+    """
+    from wbj.memoria import save_prediction
+    from wbj.targets import live_price, price_targets
+    from wbj.universo import SECTORES, universo
+
+    if sector and sector not in SECTORES:
+        typer.secho(f"Sector desconocido: {sector}. Opciones: "
+                    f"{', '.join(SECTORES)}", fg="red", err=True)
+        raise typer.Exit(1)
+
+    tickers = universo([sector] if sector else None)
+    if limite:
+        tickers = tickers[:limite]
+
+    settings, _, _ = _providers()
+    hoy = date.today()
+    ok = saltados = fallidos = 0
+    errores: list[tuple[str, str]] = []
+
+    typer.echo(f"{len(tickers)} tickers. Los ya analizados hoy se omiten.\n")
+    for i, t in enumerate(tickers, 1):
+        destino = settings.reports_dir / t / hoy.isoformat() / "prediccion.json"
+        if destino.exists() and not rehacer:
+            saltados += 1
+            continue
+        try:
+            p = _build_packet(t)
+            result = _compute(p)
+            out = _out_dir(settings, t)
+            (out / "packet.json").write_text(json.dumps(p, indent=2))
+            (out / "scores.json").write_text(json.dumps(result, indent=2))
+            targets = price_targets(
+                p, live_price(t, fmp_api_key=settings.fmp_api_key))
+            save_prediction(settings.reports_dir, t, hoy,
+                            result["scorecard"], targets)
+            ok += 1
+            score = result["scorecard"].get("overall_10")
+            typer.echo(f"  [{i:>3}/{len(tickers)}] {t:<6} ok"
+                       + (f"  score {score}" if score is not None else ""))
+        except KeyboardInterrupt:
+            typer.secho("\nInterrumpido. Relanza para continuar donde iba.",
+                        fg="yellow")
+            break
+        except Exception as e:  # un ticker roto no puede tumbar el lote
+            fallidos += 1
+            errores.append((t, f"{type(e).__name__}: {e}"))
+            typer.secho(f"  [{i:>3}/{len(tickers)}] {t:<6} FALLÓ "
+                        f"({type(e).__name__})", fg="yellow")
+
+    typer.echo(f"\n{ok} analizados, {saltados} ya estaban, {fallidos} fallaron.")
+    if errores:
+        typer.echo("\nFallos (para revisar, no para ignorar):")
+        for t, e in errores[:20]:
+            typer.echo(f"  {t:<6} {e[:90]}")
+
+
 @app.command()
 def screen(limit: int = 15) -> None:
     """Discover well-scoring companies you may not know (research list)."""
