@@ -17,6 +17,18 @@
         "cd ~/Proyectos/fitness-app && exec uv run uvicorn app.main:app --port 8771"
       ],
       "port": 8771
+    },
+    {
+      "name": "run4health-demo",
+      "runtimeExecutable": "/usr/bin/python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8773",
+        "-d",
+        "/Users/angel/Proyectos/fitness-app/docs"
+      ],
+      "port": 8773
     }
   ]
 }
