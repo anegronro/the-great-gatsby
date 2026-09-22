@@ -4,8 +4,19 @@
     {
       "name": "wbj-webapp",
       "runtimeExecutable": "/Users/angel/Desktop/warren-buffett-jr/engine/.venv/bin/python",
-      "runtimeArgs": ["/Users/angel/Desktop/warren-buffett-jr/engine/scripts/webapp.py"],
+      "runtimeArgs": [
+        "/Users/angel/Desktop/warren-buffett-jr/engine/scripts/webapp.py"
+      ],
       "port": 8765
+    },
+    {
+      "name": "run4health-local",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": [
+        "-c",
+        "cd ~/Proyectos/fitness-app && exec uv run uvicorn app.main:app --port 8771"
+      ],
+      "port": 8771
     }
   ]
 }
