@@ -320,17 +320,19 @@ PAGE = """<!doctype html>
   .sugg button:hover { background:var(--grid); }
   .sugg b { min-width:56px; } .sugg span { color:var(--ink2); }
   #status { margin:20px 2px; color:var(--ink2); font-size:14px; }
-  .grid { display:grid; grid-template-columns:repeat(12, 1fr); gap:18px;
+  .grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:18px;
     margin-top:22px; display:none; }
   .card { background:var(--card); border-radius:18px; padding:24px;
     box-shadow:0 1px 3px rgba(20,22,30,.06); }
   .c-hero { grid-column:span 7; } .c-words { grid-column:span 5; }
   .c-chart { grid-column:span 12; background:#1A160D; color:#EFE7D2; }
   .c-score { grid-column:span 5; } .c-target { grid-column:span 7; }
-  .c-brief { grid-column:span 12; }
+  .c-brief { grid-column:span 12; } .c-order { grid-column:span 6; }
   @media (max-width:860px) { .c-hero,.c-words,.c-chart,.c-score,.c-target { grid-column:span 12; } }
+  /* El ticket de 4 columnas necesita ~470px: a media anchura no cabe hasta ~1040px. */
+  @media (max-width:1040px) { .c-order { grid-column:span 12; } }
   /* --- company brief panel --- */
-  .brief-grid { display:grid; grid-template-columns:repeat(12,1fr); gap:18px; margin-top:6px; }
+  .brief-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:18px; margin-top:6px; }
   .brief-col { grid-column:span 6; } .brief-col.full { grid-column:span 12; }
   @media (max-width:860px) { .brief-col { grid-column:span 12; } }
   .bh { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.04em;
@@ -409,7 +411,7 @@ PAGE = """<!doctype html>
   .tglegend i { width:18px; border-top:2px dashed; display:inline-block; }
   .card h2 { font-size:16px; font-weight:700; }
   .card .sub { color:var(--muted); font-size:12.5px; margin-top:3px; }
-  .hero-num { display:flex; align-items:baseline; gap:12px; margin:16px 0 4px; }
+  .hero-num { display:flex; flex-wrap:wrap; align-items:baseline; gap:12px; margin:16px 0 4px; }
   .hero-num .n { font-size:38px; font-weight:800; letter-spacing:-.03em; }
   .hero-num .u { font-size:13px; color:var(--ink2); }
   .chip { font-size:12.5px; font-weight:700; padding:3px 9px; border-radius:99px; }
